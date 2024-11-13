@@ -10,7 +10,7 @@ version created to address following aims and concerns:
 
 * Update firmware away from original CV style programming towards a more C++ style of classes and modules with the aim of making a migration to a new platform more achievable. 
 * Drop support from Arduino Uno and Nano as the amount of SRAM is insufficient.  For this version only the '2560 will be supported. 
-* Re estate facilities from the Blue Box solution to provide a single solution for all purposes.
+* Re enstate facilities from the Blue Box solution to provide a single solution for all purposes.
 
 ## Version 0.2.0
 

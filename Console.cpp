@@ -27,8 +27,8 @@
 //	The CONSOLE device
 //	==================
 //
-static Byte_Queue<32>	console_in;
-static Byte_Queue<128>	console_out;
+static Byte_Queue< CONSOLE_INPUT >	console_in;
+static Byte_Queue< CONSOLE_OUTPUT >	console_out;
 
 USART_IO		console;
 

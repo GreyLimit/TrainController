@@ -444,7 +444,13 @@ class USART_IO : public Byte_Queue_API {
 		//	register empty interrupt is currently enabled (ie
 		//	we are currently spooling stuff out).
 		//
-		volatile bool		_async;	
+		volatile bool		_async;
+
+		//
+		//	This is a boolean flag indicating that there is
+		//	data ready to be read.
+		//
+		bool			_data_ready;
 		
 	public:
 		//
@@ -500,6 +506,11 @@ class USART_IO : public Byte_Queue_API {
 		//	Returns true if queued, false otherwise.
 		//
 		virtual bool write( byte data );
+
+		//
+		//	Return the address of the data ready flag.
+		//
+		bool *data_ready( void );
 
 		//
 		//	These are the interrupt routines used to asynchronously

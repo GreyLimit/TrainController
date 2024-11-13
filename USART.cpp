@@ -317,6 +317,7 @@ USART_IO::USART_IO( void ) {
 	_input = NULL;
 	_output = NULL;
 	_async = false;
+	_data_ready = false;
 }
 
 //
@@ -445,6 +446,13 @@ bool USART_IO::write( byte data ) {
 		return( true );
 	}
 	return( false );
+}
+
+//
+//	Return the address of the data ready flag.
+//
+bool *USART_IO::data_ready( void ) {
+	return( &_data_ready );
 }
 
 

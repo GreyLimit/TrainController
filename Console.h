@@ -27,8 +27,19 @@
 //
 //	Bring in USART definitions
 //
+#include "Parameters.h"
 #include "Byte_Queue.h"
 #include "USART.h"
+
+//
+//	Define the console buffer sizes, if not predefined elsewhere.
+//
+#ifndef CONSOLE_INPUT
+#define CONSOLE_INPUT	32
+#endif
+#ifndef CONSOLE_OUTPUT
+#define CONSOLE_OUTPUT	128
+#endif
 
 //
 //	The CONSOLE device

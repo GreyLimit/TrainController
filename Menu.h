@@ -71,7 +71,7 @@ OBJECT_DATA {
 	//	For mobile decoders this is the speed direction.  However
 	//	the system needs to allow for the posibility of going
 	//	both forwards or backwards at speed zero.  Therefore
-	//	whhile ZERO means stationary, the following applies
+	//	while ZERO means stationary, the following applies
 	//
 	//		+1	->	0 forwards
 	//		+2	->	1 forwards

@@ -1,8 +1,16 @@
-# Arduino Train Controller V0.2.0
+# Arduino Train Controller V0.2.2
 
 ## Summary
 
-A branch from the Ardunio DCC Generator with the intent of creating a free standing mechanism that will allow DCC operation of small layouts without significant expenditure.
+A branch from the Ardunio DCC Generator with the intent of creating a free standing mechanism that will allow DCC operation of small layouts without significant expenditure.  Extending functionally to bring it back "Blue Box" components.
+
+## Version 0.2.2
+
+version created to address following aims and concerns: 
+
+* Update firmware away from original CV style programming towards a more C++ style of classes and modules with the aim of making a migration to a new platform more achievable. 
+* Drop support from Arduino Uno and Nano as the amount of SRAM is insufficient.  For this version only the '2560 will be supported. 
+* Re estate facilities from the Blue Box solution to provide a single solution for all purposes.
 
 ## Version 0.2.0
 

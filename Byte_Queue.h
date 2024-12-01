@@ -10,7 +10,10 @@
 //	data collection and tracking.
 //
 #include "Environment.h"
+#include "Parameters.h"
+#include "Configuration.h"
 #include "Critical.h"
+#include "Signal.h"
 
 //
 //	Define the virtualised Byte Queue API which can be used
@@ -49,12 +52,12 @@ class Byte_Queue_API {
 		//
 		//	Return the available capacity in the buffer
 		//
-		virtual data_size space( void ) = 0;
+		virtual byte space( void ) = 0;
 
 		//
 		//	Return the number of available bytes.
 		//
-		virtual data_size available( void ) = 0;
+		virtual byte available( void ) = 0;
 
 		//
 		//	Data Output Support
@@ -162,15 +165,15 @@ class Byte_Queue_API {
 //
 //	We use a template class as the queue sizes are statically
 //	defined at compile time and avoid the requirement for using
-//	heap memory and unnecessary double indirections.
+//	heap memory and unnecessary double indirection.
 //
-template< data_size QUEUE_SIZE >
+template< byte QUEUE_SIZE >
 class Byte_Queue : public Byte_Queue_API {
 	private:
 		//
 		//	Declare a constant for the size of the queue area.
 		//
-		static const data_size	queue_size = QUEUE_SIZE;
+		static const byte	queue_size = QUEUE_SIZE;
 		
 		//
 		//	Create the memory that is used for the queue area
@@ -181,7 +184,7 @@ class Byte_Queue : public Byte_Queue_API {
 		//	Define where the data in added and removed and
 		//	how many bytes are in the queue.
 		//
-		volatile data_size	_in,
+		volatile byte		_in,
 					_out,
 					_content;
 		
@@ -241,12 +244,125 @@ class Byte_Queue : public Byte_Queue_API {
 			return( 0 );
 		}
 
-		virtual data_size space( void ) {
+		virtual byte space( void ) {
 			return( queue_size - _content );
 		}
 
-		virtual data_size available( void ) {
+		virtual byte available( void ) {
 			return( _content );
+		}
+
+};
+
+//
+//	Define a template class similar to the above class but including
+//	the use of a Signal object to control data collection.
+//
+template< byte QUEUE_SIZE >
+class Byte_Queue_Signal : public Byte_Queue_API {
+	private:
+		//
+		//	Declare a constant for the size of the queue area.
+		//
+		static const byte	queue_size = QUEUE_SIZE;
+		
+		//
+		//	Create the memory that is used for the queue area
+		//
+		byte			_queue[ queue_size ];
+		
+		//
+		//	Define where the data in added and removed and
+		//	how many bytes are in the queue.
+		//
+		volatile byte		_in,
+					_out,
+					_content;
+
+		//
+		//	Declare the Signal we will be using to control
+		//	reading from the queue.
+		//
+		Signal			_gate;
+		
+	public:
+		//
+		//	Constructor only.
+		//	
+		Byte_Queue( void ) {
+			//
+			//	Queue indexes and length
+			//
+			_in = 0;
+			_out = 0;
+			_content = 0;
+		}
+		//
+		//	The Byte Queue API
+		//	==================
+		//
+		
+		virtual bool write( byte data ) {
+			Critical	code;
+
+			//
+			//	Is there space for the additional byte?
+			//
+			if( _content >= queue_size ) return( false );
+			//
+			//	There is sufficient space.
+			//
+			_queue[ _in++ ] = data;
+			if( _in >= queue_size ) _in = 0;
+			_content++;
+			//
+			//	Announce extra data.
+			//
+			_gate.release();
+			//
+			//	Done.
+			//
+			return( true );
+		}
+
+		virtual byte read( void ) {
+			Critical	code;
+			
+			if( _content ) {
+				byte	data;
+
+				//
+				//	There is data so get it.
+				//
+				data = _queue[ _out++ ];
+				if( _out >= queue_size ) _out = 0;
+				_content--;
+				//
+				//	Announce data has been acquired.
+				//
+				_gate.claim();
+				//
+				//	Done.
+				//
+				return( data );
+			}
+			return( 0 );
+		}
+
+		virtual byte space( void ) {
+			return( queue_size - _content );
+		}
+
+		virtual byte available( void ) {
+			return( _content );
+		}
+
+		//
+		//	For this version of the class we allow
+		//	access to the gate
+		//
+		Signal *control_signal( void ) {
+			return( &_gate );
 		}
 
 };

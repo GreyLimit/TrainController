@@ -51,6 +51,11 @@ extern USART_IO		console;
 //	The call to initialise it.
 //
 extern void initialise_console( USART_line_speed speed );
+
+//
+//	Get address of the control gate.
+//
+extern Signal *console_control( void );
  
 
 #endif

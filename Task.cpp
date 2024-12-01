@@ -12,8 +12,6 @@
 //
 TaskManager task_manager;
 
-
-
 //
 //	EOF
 //

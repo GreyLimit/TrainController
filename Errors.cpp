@@ -8,13 +8,15 @@
 //
 //	The configuration of the firmware.
 //
+#include "Environment.h"
+#include "Parameters.h"
 #include "Configuration.h"
 #include "Trace.h"
 
 //
 //	Bring in our environment
 //
-#include "Environment.h"
+#include "Critical.h"
 #include "Errors.h"
 
 //
@@ -108,10 +110,28 @@ void Errors::log_error( word error, word arg ) {
 //
 //	Log a terminal system error with the system.
 //
-void Errors::log_terminate( word error, UNUSED( const char *file_name ), word line_number ) {
+void Errors::log_terminate( word error, const char *file_name, word line_number ) {
 	//
 	//	This is a termination error where we are supplied the error, filename and
-	//	line number.
+	//	line number.  This routine is not expected to return, ever, and must be
+	//	cognisant that is *may* be called from within a Critical section of code.
+	//
+	//	Are we trapped inside a Critical section of code (or an interrupt)?  If
+	//	so we *must* release the interrupts so that the console code can be used
+	//	to send out the error messages.
+	//
+	if( Critical::critical_code()) Critical::enable_interrupts();
+	//
+	//	Now we start an infinite loop..
+	//
+	while( true ) {
+		//
+		//	Output our point of failure.
+		//
+	//
+	//	Therefore, before actually emitting the error the system must be restored
+	//	to a state where any pending error messages can be pushed out of the system
+	//	through the console device.
 	//
 	log_error( error, line_number );
 }

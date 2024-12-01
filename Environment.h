@@ -13,6 +13,13 @@
 //
 #ifndef __linux__
 #include <Arduino.h>
+
+//
+//	Bring in the necessary IO and Interrupt definitions.
+//
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
 #endif
 
 //
@@ -89,6 +96,17 @@
 #ifndef FUNC
 #define FUNC(x)		(*(x))
 #endif
+
+//
+//	Define a symbol that will indicate that a case
+//	selection (inside a switch statement) should
+//	(and is expected to) fall through to the case
+//	statement that follows it in the source code.
+//
+//	This is used so that, according to the compiler
+//	selected, the correct fall through can be used.
+//
+#define FALL_THROUGH	__attribute__((fallthrough))
 
 
 //
@@ -202,73 +220,6 @@
 #define B_TO_L(b)	(byte)((b)&0x0f)
 #endif
 
-
-//////////////////////////////////////////////////
-//						//
-//	Data Size type definition		//
-//	=========================		//
-//						//
-//////////////////////////////////////////////////
-//
-//	Define a scalar type to represent the size of the value
-//	used when handling buffer lengths.
-//
-//	The default mode (for small systems with limited memory)
-//	is to use an unsigned byte value.  This limits (obviously)
-//	8 bit byte buffers to 255 values and 16 bit word buffers
-//	(hiding inside a byte buffer) to 127 values.
-//
-//	A system with more than a few KBytes of memory could reasonably
-//	want and need to handle data larger than this, so the type
-//	would need to be changed to a word based value.
-//
-
-#if defined( ARDUINO_ARCH_AVR ) || defined( ARDUINO_ARCH_MEGAAVR )
-
-//
-//	AVR systems are really short of memory, a byte size buffer and
-//	queue length should be more than enough.
-//
-typedef byte data_size;
-#define DATA_SIZE_SIZE	1
-
-#else
-
-//
-//	Systems other than the AVR chip are assumed to have capability
-//	and capacity to support word sizes buffer/queue lengths.
-//
-typedef word data_size;
-#define DATA_SIZE_SIZE	2
-
-#endif
-
-//
-//	Definitions used around the data_size type.
-//
-//	DATA_SIZE_SIZE		Size of type in bytes
-//
-//	DATA_SIZE_BITS		Number of bits required to index
-//				the bytes within the size value.
-//
-//	DATA_SIZE_MASK		Bit mask matching above bit count
-//
-//	DATA_SIZE_MAX		The maximum unsigned value for the
-//				data_size type.
-//
-//	I know there are better ways of doing this, but at the moment
-//	the concept of the "data_size" type and it's purpose is a little
-//	flexible.  Essentially it is meant to reflect the "optimal" size
-//	of a data type used to represent the "size" of something (a
-//	packet, a buffer, a string .. something).  On the smaller MCUs
-//	using anything other than a byte is pointless, they simply have
-//	not got the memory.  On the larger MCUs with more memory then a
-//	byte value is too restrictive, but a 16-bit word is almost
-//	certainly sufficient (for most cases).
-//
-#define DATA_SIZE_BITS	((DATA_SIZE_SIZE==1)?0:((DATA_SIZE_SIZE==2)?1:((DATA_SIZE_SIZE==4)?2:3)))
-#define DATA_SIZE_MASK	((1<<DATA_SIZE_BITS)-1)
-#define DATA_SIZE_MAX	((1<<(DATA_SIZE_SIZE<<3))-1)
 
 
 //////////////////////////////////////////////////

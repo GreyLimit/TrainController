@@ -272,7 +272,7 @@ static USART_Device *usart[ usart_devices ] = { &usart0, &usart1, &usart2, &usar
 #endif
 
 //
-//	The following macro calculate the initial
+//	The following macro calculates the initial
 //	"ticks count per bit" using the CPU frequency
 //	and the target baudrate.
 //
@@ -317,7 +317,6 @@ USART_IO::USART_IO( void ) {
 	_input = NULL;
 	_output = NULL;
 	_async = false;
-	_data_ready = false;
 }
 
 //
@@ -379,7 +378,7 @@ bool USART_IO::initialise( byte inst, USART_line_speed speed, USART_char_size bi
 //	Return number of bytes queued ready to
 //	be read.
 //
-data_size USART_IO::available( void ) {
+byte USART_IO::available( void ) {
 	return( _input->available());
 }
 
@@ -390,7 +389,7 @@ data_size USART_IO::available( void ) {
 //	Return the number of bytes which can be
 //	added to the output queue for writing.
 //
-data_size USART_IO::space( void ) {
+byte USART_IO::space( void ) {
 	return( _output->space());
 }
 
@@ -447,14 +446,6 @@ bool USART_IO::write( byte data ) {
 	}
 	return( false );
 }
-
-//
-//	Return the address of the data ready flag.
-//
-bool *USART_IO::data_ready( void ) {
-	return( &_data_ready );
-}
-
 
 //
 //	Interrupts

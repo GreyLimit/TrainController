@@ -14,6 +14,8 @@
 //	We will need:
 //
 #include "Environment.h"
+#include "Parameters.h"
+#include "Configuration.h"
 #include "Byte_Queue.h"
 
 //////////////////////////////////////////////////////////
@@ -446,12 +448,6 @@ class USART_IO : public Byte_Queue_API {
 		//
 		volatile bool		_async;
 
-		//
-		//	This is a boolean flag indicating that there is
-		//	data ready to be read.
-		//
-		bool			_data_ready;
-		
 	public:
 		//
 		//	Define the initialiser.
@@ -474,7 +470,7 @@ class USART_IO : public Byte_Queue_API {
 		//	Return number of bytes queued ready to
 		//	be read.
 		//
-		virtual data_size available( void );
+		virtual byte available( void );
 
 		//
 		//	byte space( void )
@@ -483,7 +479,7 @@ class USART_IO : public Byte_Queue_API {
 		//	Return the number of bytes which can be
 		//	added to the output queue for writing.
 		//
-		virtual data_size space( void );
+		virtual byte space( void );
 
 		//
 		//	byte read( void )

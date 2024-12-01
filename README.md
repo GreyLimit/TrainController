@@ -2,15 +2,43 @@
 
 ## Summary
 
-A branch from the Ardunio DCC Generator with the intent of creating a free standing mechanism that will allow DCC operation of small layouts without significant expenditure.  Extending functionally to bring it back "Blue Box" components.
+While started as a branch from the Arduino DCC Generator with the intent of creating a free standing mechanism that will allow DCC operation of small layouts this is to be extended to recover lost functionality of the original Arduino DCC Generator.
+
+## Version 0.2.3
+
+
+This version, really an extension of v0.2.2) sees the
+following modifications:
+
+* Introduction of a simplified Dijstra P/V signalling system
+
+* Introduction of a Signal controller task management system.
+
+* Replace use of millis() and micros() with a Signal based relative time system.
+
+* Conversion of the DCC generation code to a C++ class permitting a more generic application of its code (in future).
+
+Lets be honest - this is a full rewrite of the whole firmware
+as a move away from my earlier attempts to create something
+resembling "real time" software towards something more structured
+and portable.
+
+This version is wholey different from the previous versions
+containing systems for managing time in both "computer" and
+"human" scales, a system for the causing "tasks" to be called
+when and external (to that task) event raises a suitable flag.
 
 ## Version 0.2.2
 
-version created to address following aims and concerns: 
+Restructuring the code to resolve an issue with time keeping and introduce flexibility for future development through the creation of a event driven "task" management and scheduling system.
 
-* Update firmware away from original CV style programming towards a more C++ style of classes and modules with the aim of making a migration to a new platform more achievable. 
-* Drop support from Arduino Uno and Nano as the amount of SRAM is insufficient.  For this version only the '2560 will be supported. 
-* Re enstate facilities from the Blue Box solution to provide a single solution for all purposes.
+In addition to the above the supported hardware platforms will be reduced to just the Arduino Mega 2560 as the limited memory capacity of the UNO and Nano (2 KBytes) are insufficient to support future options.
+
+## Version 0.2.1
+
+Naturally, a bug has been found - the DCC generation would appear to be stopping for short periods.  No known reason why at the moment.
+
+Symptoms:  The "packets per second" counter in the status page drop to zero for a number of seconds then picks up and returns to the normal rate.
 
 ## Version 0.2.0
 
@@ -22,7 +50,7 @@ The subsequent version 0.2.X will be associated with development for support of 
 
 Debugging the LCD driver code; specifically the "screen buffer" code where a very specific "edge case" literally put data across the screen.
 
-The bug was finally isolated to a piece of code four years old that had never shown errors before.  Specifically if the last character displayed as at the edge of the LCD and the next character displayed was to over write the previous character then the LCD was not told to re-place the cursor to the right place.  The effect of this was that the "over written" characters walked through the LCD display nose-to-tail overwriting other parts of the display.
+The bug was finally isolated to a piece of code four years old that had never shown errors before.  Specifically if the last character displayed at the edge of the LCD and the next character displayed was to over write the previous character then the LCD was not told to re-place the cursor to the right place.  The effect of this was that the "over written" characters walked through the LCD display nose-to-tail overwriting other parts of the display.
 
 Also found bugs with the status display and object display code where I had used, in error, direct output methods rather than the through buffer methods for displaying data.  This, confusingly, created almost exactly the same effect on screen as the above error and so was not noticed as an error until the above bug was fixed.
 

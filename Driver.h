@@ -59,25 +59,57 @@ public:
 	//
 	//	Add a new pin to the configuration of the driver.
 	//
-	int add( byte *index, byte enable, byte direction ) {
+	bool add( byte *index, byte enable, byte direction ) {
+		driver	*d;
+		
 		//
 		//	This is a pin referenced by the platform pin number.
 		//
 		if( _districts >= MAXIMUM_DISTRICTS ) return( false );
-		_district[ _districts ].enable.configure( enable, false, false );
-		_district[ _districts ].direction.configure( direction, false, false );
-		*index = _districts++;
+
+		//
+		//	Locate a new record (and save its index number).
+		//
+		d = &( _district[(( *index = _districts++ ))]);
+
+		//
+		//	Update record and initialise the pins.
+		//
+		d->enable.configure( enable, false );
+		d->enable.low();
+		d->direction.configure( direction, false );
+		d->direction.low()
+
+		//
+		//	Done!
+		//
 		return( true );
 	}
 	bool add( byte *index, byte enable_dev, byte enable_bitno, byte direction_dev, byte direction_bitno ) {
+		driver	*d;
+		
 		//
 		//	This is the pin referenced by port number and bit
 		//	within port number.
 		//
 		if( _districts >= MAXIMUM_DISTRICTS ) return( false );
-		_district[ _districts ].enable.configure( enable_dev, enable_bitno, false, false );
-		_district[ _districts ].direction.configure( direction_dev, direction_bitno, false, false );
-		*index = _districts++;
+
+		//
+		//	Locate a new record (and save its index number).
+		//
+		d = &( _district[(( *index = _districts++ ))]);
+
+		//
+		//	Update record and initialise the pins.
+		//
+		d->enable.configure( enable_dev, enable_bitno, false );
+		d->enable.low();
+		d->direction.configure( direction_dev, direction_bitno, false );
+		d->direction.low()
+
+		//
+		//	Done.
+		//
 		return( true );
 	}
 
@@ -115,7 +147,34 @@ public:
 		if( index < _districts ) _district[ index ].direction.toggle());
 	}
 
+	//
+	//	Generic power on/off call.
+	//
+	void power( bool on ) {
+		if( on ) {
+			for( byte i = 0; i < _districts; _district[ i++ ].enable.high());
+		}
+		else {
+			for( byte i = 0; i < _districts; _district[ i++ ].enable.low());
+		}
+	}
+	void power( byte index, bool on ) {
+		if( index < _districts ) {
+			if( on ) {
+				_district[ index ].enable.high());
+			}
+			else {
+				_district[ index ].enable.low());
+			}
+		}
+	}
+
 };
+
+//
+//	Here we declare the driver object.
+//
+extern Driver dcc_driver;
 
 #endif
 

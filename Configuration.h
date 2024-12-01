@@ -41,8 +41,10 @@
 
 //
 //	SRAM = 2 KBytes
+//	Arch = AVR
 //
 #define SELECT_SML(s,m,l)	s
+#define SELECT_ARCH(avr,arm)	avr
 
 
 #elif defined( __AVR_ATmega2560__ )
@@ -54,8 +56,10 @@
 
 //
 //	SRAM = 8 KBytes
+//	Arch = AVR
 //
-#define SELECT_SML(s,m,l)	l
+#define SELECT_SML(s,m,l)	m
+#define SELECT_ARCH(avr,arm)	avr
 
 #else
 //
@@ -285,6 +289,16 @@
 //
 #define LCD_DISPLAY_STATUS_COLUMN	14
 #define LCD_DISPLAY_STATUS_WIDTH	6
+
+//
+//	Text Buffer Space
+//	=================
+//
+//	Define the size of a generic small textual buffer for
+//	use on the stack.
+//
+#define TEXT_BUFFER			SELECT_SML(8,12,16)
+
 
 
 #endif

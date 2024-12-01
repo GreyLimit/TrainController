@@ -69,7 +69,8 @@ typedef struct {
 			driver_phase_period,
 			rotary_update_period,
 			dynamic_load_period;
-	byte		dynamic_load_reports,
+	byte		average_current_index,
+			dynamic_load_reports,
 			transient_command_repeats,
 			service_mode_reset_repeats,
 			service_mode_command_repeats;
@@ -115,9 +116,8 @@ extern Constants constant;
 //	The default value is "built" using the MAGIC() macro
 //	defined in "Magic.h".
 //
-#define DEFAULT_IDENTIFICATION_MAGIC	MAGIC(2024,8,25)
-#define IDENTIFICATION_MAGIC_VAR	constant.var.value.identification_magic
-#define IDENTIFICATION_MAGIC		IDENTIFICATION_MAGIC_VAR
+#define DEFAULT_IDENTIFICATION_MAGIC	MAGIC(2024,11,15)
+#define IDENTIFICATION_MAGIC		constant.var.value.identification_magic
 
 //
 //	Define the absolute current limit value (0-1023) at which
@@ -128,35 +128,33 @@ extern Constants constant;
 //	is declared
 //
 #define DEFAULT_INSTANT_CURRENT_LIMIT	800
-#define INSTANT_CURRENT_LIMIT_VAR	constant.var.value.instant_current_limit
-#define INSTANT_CURRENT_LIMIT		INSTANT_CURRENT_LIMIT_VAR
+#define INSTANT_CURRENT_LIMIT		constant.var.value.instant_current_limit
+//
+#define DEFAULT_AVERAGE_CURRENT_INDEX	8
+#define AVERAGE_CURRENT_INDEX		constant.var.value.average_current_index
 //
 #define DEFAULT_AVERAGE_CURRENT_LIMIT	700
-#define AVERAGE_CURRENT_LIMIT_VAR	constant.var.value.average_current_limit
-#define AVERAGE_CURRENT_LIMIT		AVERAGE_CURRENT_LIMIT_VAR
+#define AVERAGE_CURRENT_LIMIT		constant.var.value.average_current_limit
 
 //
 //	The grace period during which, after applying power to a district,
 //	any overloads are ignored (in milliseconds).
 //
 #define DEFAULT_POWER_GRACE_PERIOD	1000
-#define POWER_GRACE_PERIOD_VAR		constant.var.value.power_grace_period
-#define POWER_GRACE_PERIOD		POWER_GRACE_PERIOD_VAR
+#define POWER_GRACE_PERIOD		constant.var.value.power_grace_period
 
 //
 //	Define the periodic interval in milliseconds.
 //
 #define DEFAULT_PERIODIC_INTERVAL	1000
-#define PERIODIC_INTERVAL_VAR		constant.var.value.periodic_interval
-#define PERIODIC_INTERVAL		PERIODIC_INTERVAL_VAR
+#define PERIODIC_INTERVAL		constant.var.value.periodic_interval
 
 //
 //	Define the overall interval at which the LCD is updated,
 //	in milliseconds.
 //
 #define DEFAULT_LCD_UPDATE_INTERVAL	1000
-#define LCD_UPDATE_INTERVAL_VAR		constant.var.value.lcd_update_interval
-#define LCD_UPDATE_INTERVAL		LCD_UPDATE_INTERVAL_VAR
+#define LCD_UPDATE_INTERVAL		constant.var.value.lcd_update_interval
 
 //
 //	Define the display line refresh interval.  This is the number
@@ -164,15 +162,13 @@ extern Constants constant;
 //	updated.
 //
 #define DEFAULT_LINE_REFRESH_INTERVAL	250
-#define LINE_REFRESH_INTERVAL_VAR	constant.var.value.line_refresh_interval
-#define LINE_REFRESH_INTERVAL		LINE_REFRESH_INTERVAL_VAR
+#define LINE_REFRESH_INTERVAL		constant.var.value.line_refresh_interval
 
 //
 //	Define the duration after which a key press is considered "long".
 //
 #define DEFAULT_LONG_KEY_PRESS		750
-#define LONG_KEY_PRESS_VAR		constant.var.value.long_key_press
-#define LONG_KEY_PRESS			LINE_REFRESH_INTERVAL_VAR
+#define LONG_KEY_PRESS			constant.var.value.long_key_press
 
 //
 //	Define the Driver/District reset period (in milliseconds)
@@ -181,8 +177,7 @@ extern Constants constant;
 //	before a restart is attempted.
 //
 #define DEFAULT_DRIVER_RESET_PERIOD	10000
-#define DRIVER_RESET_PERIOD_VAR		constant.var.value.driver_reset_period
-#define DRIVER_RESET_PERIOD		DRIVER_RESET_PERIOD_VAR
+#define DRIVER_RESET_PERIOD		constant.var.value.driver_reset_period
 
 //
 //	Define the Driver/District phase test period.  This is the
@@ -190,8 +185,7 @@ extern Constants constant;
 //	before concluding that the new phase is all OK.
 //
 #define DEFAULT_DRIVER_PHASE_PERIOD	100
-#define DRIVER_PHASE_PERIOD_VAR		constant.var.value.driver_phase_period
-#define DRIVER_PHASE_PERIOD		DRIVER_PHASE_PERIOD_VAR
+#define DRIVER_PHASE_PERIOD		constant.var.value.driver_phase_period
 
 //
 //	Define the number of times various types of packets are repeated.
@@ -213,16 +207,13 @@ extern Constants constant;
 //		repeated.
 //
 #define DEFAULT_TRANSIENT_COMMAND_REPEATS	8
-#define TRANSIENT_COMMAND_REPEATS_VAR		constant.var.value.transient_command_repeats
-#define TRANSIENT_COMMAND_REPEATS		TRANSIENT_COMMAND_REPEATS_VAR
+#define TRANSIENT_COMMAND_REPEATS		constant.var.value.transient_command_repeats
 //
 #define DEFAULT_SERVICE_MODE_RESET_REPEATS	20
-#define SERVICE_MODE_RESET_REPEATS_VAR		constant.var.value.service_mode_reset_repeats
-#define SERVICE_MODE_RESET_REPEATS		SERVICE_MODE_RESET_REPEATS_VAR
+#define SERVICE_MODE_RESET_REPEATS		constant.var.value.service_mode_reset_repeats
 //
 #define DEFAULT_SERVICE_MODE_COMMAND_REPEATS	10
-#define SERVICE_MODE_COMMAND_REPEATS_VAR	constant.var.value.service_mode_command_repeats
-#define SERVICE_MODE_COMMAND_REPEATS		SERVICE_MODE_COMMAND_REPEATS_VAR
+#define SERVICE_MODE_COMMAND_REPEATS		constant.var.value.service_mode_command_repeats
 
 //
 //	Rotary Update Period controls how fast input from
@@ -230,8 +221,7 @@ extern Constants constant;
 //	being adjusted.
 //
 #define DEFAULT_ROTARY_UPDATE_PERIOD		350
-#define ROTARY_UPDATE_PERIOD_VAR		constant.var.value.rotary_update_period
-#define ROTARY_UPDATE_PERIOD			ROTARY_UPDATE_PERIOD_VAR
+#define ROTARY_UPDATE_PERIOD			constant.var.value.rotary_update_period
 
 //
 //	Dynamic Load period specifies the frequency that
@@ -240,8 +230,7 @@ extern Constants constant;
 //	the console.
 //
 #define DEFAULT_DYNAMIC_LOAD_PERIOD		1000
-#define DYNAMIC_LOAD_PERIOD_VAR			constant.var.value.dynamic_load_period
-#define DYNAMIC_LOAD_PERIOD			DYNAMIC_LOAD_PERIOD_VAR
+#define DYNAMIC_LOAD_PERIOD			constant.var.value.dynamic_load_period
 
 //
 //	Dynamic Load reports controls if the the Arduino
@@ -249,26 +238,12 @@ extern Constants constant;
 //	system (the '[L#]' replies).  0 = off, 1 = on.
 //
 #define DEFAULT_DYNAMIC_LOAD_REPORTS		0
-#define DYNAMIC_LOAD_REPORTS_VAR		constant.var.value.dynamic_load_reports
-#define DYNAMIC_LOAD_REPORTS			DYNAMIC_LOAD_REPORTS_VAR
-
-//
-//	Define the number of "1"s transmitted by the firmware
-//	forming the "preamble" for the DCC packet itself.
-//
-//	The DCC standard specifies a minimum of 14 for normal
-//	commands and 20 for programming commands.
-//
-//	These are the short and long preambles.
-//
-#define DCC_SHORT_PREAMBLE			15
-#define DCC_LONG_PREAMBLE			20
-
+#define DYNAMIC_LOAD_REPORTS			constant.var.value.dynamic_load_reports
 
 //
 //	Provide the alias through which the page memory can be accessed
 //
-#define PAGE_MEMORY_VAR				constant.var.value.pages
+#define PAGE_MEMORY				constant.var.value.pages
 
 
 //

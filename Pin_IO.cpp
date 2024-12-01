@@ -1,12 +1,12 @@
 //
-//	Pins_IO.cpp
-//	===============
+//	Pin_IO.cpp
+//	==========
 //
 
 //
 //	Bring in our definitions.
 //
-#include "Pins_IO.h"
+#include "Pin_IO.h"
 
 
 //

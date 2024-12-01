@@ -21,14 +21,16 @@
 ///	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "Environment.h"
+#include "Parameters.h"
+#include "Configuration.h"
 #include "Console.h"
 
 //
 //	The CONSOLE device
 //	==================
 //
-static Byte_Queue< CONSOLE_INPUT >	console_in;
-static Byte_Queue< CONSOLE_OUTPUT >	console_out;
+static Byte_Queue_Signal< CONSOLE_INPUT >	console_in;
+static Byte_Queue< CONSOLE_OUTPUT >		console_out;
 
 USART_IO		console;
 
@@ -42,6 +44,14 @@ void initialise_console( USART_line_speed speed ) {
 	//
 	console.initialise( 0, speed, CS8, PNone, SBOne, &console_in, &console_out );
 }
+
+//
+//	Get address of the control gate.
+//
+Signal *console_control( void ) {
+	return( console_in.control_signal());
+}
+ 
 
 
 //

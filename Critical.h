@@ -39,6 +39,15 @@
 class Critical {
 	private:
 		//
+		//	The bit of the status byte which controls the
+		//	handling of interrupts and enables code to be
+		//	flagged as critical.
+		//
+		//	This is SREG bit 7: ""I".
+		//
+		static const byte global_interrupt_enable = bit( 7 );
+		
+		//
 		//	Somewhere to save a copy of the Status
 		//	Register
 		//
@@ -50,7 +59,7 @@ class Critical {
 		//
 		Critical( void ) {
 			_sreg = SREG;
-			noInterrupts();
+			SREG &= ~global_interrupt_enable;
 		}
 		//
 		//	Called when leaving the block
@@ -58,7 +67,32 @@ class Critical {
 		~Critical() {
 			SREG = _sreg;
 		}
+	//
+	//	Simple boolean functions return true if
+	//
+	//		execution is taking place inside an interrupt or Critical section.
+	//
+	//		execution is taking place as normal code.
+	//
+	static inline bool critical_code( void ) {
+		return(( SREG & global_interrupt_enable ) == 0 );
+	}
+	static inline bool normal_code( void ) {
+		return(( SREG & global_interrupt_enable ) != 0 );
+	}
+
+	//
+	//	Routines that provide direct access to interrupts controls.
+	//	These should not be used under any normal circumstances.
+	//
+	static inline void enable_interrupts( void ) {
+		SREG |= global_interrupt_enable;
+	}
+	static inline void disable_interrupts( void ) {
+		SREG &= ~global_interrupt_enable;
+	}
 };
+
 
 #else
 

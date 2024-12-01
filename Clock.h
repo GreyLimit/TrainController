@@ -277,7 +277,7 @@ public:
 
 	//
 	//	This is the interrupt routine, called every single
-	//	tick of the clock.  This need to be as short as
+	//	tick of the clock.  This needs to be as short as
 	//	possible to avoid bogging down the whole firmware.
 	//
 	void tick( void ) {
@@ -330,6 +330,7 @@ public:
 		//
 		//	If we exit here then all the timed events have
 		//	been notified and there is nothing left to do.
+		//
 	}
 
 	//
@@ -348,6 +349,23 @@ public:
 		ptr->event = event;
 		insert( ptr );
 		return( true );
+	}
+
+	//
+	//	An "in-line" delay of a specified number of ticks.
+	//
+	//	This call will automatically return if it is running
+	//	inside an interrupt or critical code section without
+	//	any pause being experienced.
+	//
+	void inline_delay( word ticks ) {
+		if( Critical::normal_code()) {
+			volatile bool flag = false;
+			
+			if( delay_event( ticks, &flag, false )) {
+				while( !flag ) task_manager.pole_task();
+			}
+		}
 	}
 };
 

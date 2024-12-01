@@ -119,6 +119,11 @@ public:
 #define PROGRAMMING_TRACK_ONLY		36
 
 //
+//	Task manager errors.
+//
+#define TASK_DEPTH_EXCEEDED		93
+
+//
 //	LCD COMMS Errors
 //
 #define LCD_QUEUE_FULL			94

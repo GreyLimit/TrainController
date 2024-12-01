@@ -13,7 +13,7 @@
 //	and the number of letters available on the 4x4 keypad.
 //
 #include "Configuration.h"
-#include "Keypad.h"
+#include "Layout.h"
 
 //
 //	Menu / HCI design
@@ -49,8 +49,8 @@
 //	pages.  This is directly controlled by the keypads ability to
 //	generate letters from 'A' onwards  (and typically ends with 'D').
 //
-#define OBJECT_COUNT	KEYPAD_LETTERS
-#define PAGE_COUNT	KEYPAD_LETTERS
+#define OBJECT_COUNT	LAYOUT_LETTERS
+#define PAGE_COUNT	LAYOUT_LETTERS
 
 //
 //	Declare the record holding data for a single object.

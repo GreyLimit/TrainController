@@ -55,8 +55,7 @@
 //
 //	Declare the record holding data for a single object.
 //
-#define OBJECT_DATA	struct object_data
-OBJECT_DATA {
+struct object_data {
 	//
 	//	The DCC address of the object stored in this object.
 	//
@@ -92,9 +91,8 @@ OBJECT_DATA {
 //
 //	This is a single page of objects:
 //
-#define PAGE_DATA	struct page_data
-PAGE_DATA {
-	OBJECT_DATA	object[ OBJECT_COUNT ];
+struct page_data {
+	object_data	object[ OBJECT_COUNT ];
 };
 
 //
@@ -102,9 +100,8 @@ PAGE_DATA {
 //	the constants data that is restored from EEPROM when the 
 //	firmware begins.
 //
-#define PAGE_MEMORY	struct page_memory
-PAGE_MEMORY {
-	PAGE_DATA	page[ PAGE_COUNT ];
+struct page_memory {
+	page_data	page[ PAGE_COUNT ];
 };
 
 //
@@ -116,7 +113,7 @@ PAGE_MEMORY {
 //	Define the number of menu items "per page" and the total
 //	number of menus in the system
 //
-#define ITEM_COUNT	KEYPAD_LETTERS
+#define ITEM_COUNT	LAYOUT_LETTERS
 #define MENU_COUNT	3
 
 //
@@ -128,26 +125,23 @@ PAGE_MEMORY {
 //	Define the set of menu handles associated with the menu
 //	entries available in the menu pages.
 //
-#define MENU_ITEM	struct menu_item
-MENU_ITEM {
-	char		item[ MENU_ITEM_SIZE ];
+struct menu_item {
+	char		text[ MENU_ITEM_SIZE ];
 	byte		action;
 };
 
 //
 //	A set of menu items as a page.
 //
-#define MENU_PAGE	struct menu_page
-MENU_PAGE {
-	MENU_ITEM	item[ ITEM_COUNT ];
+struct menu_page {
+	menu_item	item[ ITEM_COUNT ];
 };
 
 //
 //	And all of the menus
 //
-#define MENU_MEMORY	struct menu_memory
-MENU_MEMORY {
-	MENU_PAGE	menu[ MENU_COUNT ];
+struct menu_memory {
+	menu_page	page[ MENU_COUNT ];
 };
 
 //
@@ -180,7 +174,7 @@ MENU_MEMORY {
 //
 //	And here are the menus themselves.
 //
-extern const MENU_MEMORY	menus PROGMEM;
+extern const menu_memory	menus PROGMEM;
 
 #endif
 

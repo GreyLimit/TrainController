@@ -23,6 +23,10 @@
 //
 
 
+#define VERSION_NUMBER		"0.2.3"
+#define SERIAL_BAUD_RATE	B38400
+#define SERIAL_BAUD_RATE_STR	"38400"
+
 #endif
 
 //

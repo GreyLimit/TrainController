@@ -41,7 +41,7 @@
 //
 //	Define the number of constants we have to manage:
 //
-#define CONSTANTS	16
+#define CONSTANTS	20
 
 //
 //	The following structure is the variable space definition
@@ -58,27 +58,30 @@ typedef struct {
 	//	The following word and byte values form the constants
 	//	that modify the functional behaviour of the firmware.
 	//
-	word		instant_current_limit,
+	word		instant_current_limit,			// 1
 			average_current_limit,
 			power_grace_period,
 			periodic_interval,
-			lcd_update_interval,
+			lcd_update_interval,			// 5
 			line_refresh_interval,
+			keypad_reading_interval,
 			long_key_press,
 			driver_reset_period,
-			driver_phase_period,
+			driver_phase_period,			// 10
+			rotary_scan_period,
 			rotary_update_period,
 			dynamic_load_period;
 	byte		average_current_index,
-			dynamic_load_reports,
+			dynamic_load_reports,			// 15
+			banner_display_time,
 			transient_command_repeats,
 			service_mode_reset_repeats,
 			service_mode_command_repeats;
 	//
 	//	The following area contains the "Page Memory" managed by
-	//	the user through the  menu system.
+	//	the user through the menu system.
 	//
-	PAGE_MEMORY	pages;
+	page_memory	pages;
 } ConstantValues;
 
 static const int ConstantArea = sizeof( ConstantValues );
@@ -116,7 +119,7 @@ extern Constants constant;
 //	The default value is "built" using the MAGIC() macro
 //	defined in "Magic.h".
 //
-#define DEFAULT_IDENTIFICATION_MAGIC	MAGIC(2024,11,15)
+#define DEFAULT_IDENTIFICATION_MAGIC	MAGIC(2024,12,9)
 #define IDENTIFICATION_MAGIC		constant.var.value.identification_magic
 
 //
@@ -164,6 +167,11 @@ extern Constants constant;
 #define DEFAULT_LINE_REFRESH_INTERVAL	250
 #define LINE_REFRESH_INTERVAL		constant.var.value.line_refresh_interval
 
+//
+//	Define the interval the HCI uses to check for keyboard input.
+//
+#define DEFAULT_KEYPAD_READING_INTERVAL	500
+#define KEYPAD_READING_INTERVAL		constant.var.value.keypad_reading_interval
 //
 //	Define the duration after which a key press is considered "long".
 //
@@ -216,6 +224,14 @@ extern Constants constant;
 #define SERVICE_MODE_COMMAND_REPEATS		constant.var.value.service_mode_command_repeats
 
 //
+//	Rotary scan period defines how often the rotary
+//	controller is check for changes in the knobs
+//	rotation / button press.
+//
+#define DEFAULT_ROTARY_SCAN_PERIOD		5
+#define ROTARY_SCAN_PERIOD			constant.var.value.rotary_scan_period
+
+//
 //	Rotary Update Period controls how fast input from
 //	the rotary control is applied to the mobile controller
 //	being adjusted.
@@ -239,6 +255,12 @@ extern Constants constant;
 //
 #define DEFAULT_DYNAMIC_LOAD_REPORTS		0
 #define DYNAMIC_LOAD_REPORTS			constant.var.value.dynamic_load_reports
+
+//
+//	How long do we display the banner for (on the LCD)
+//
+#define DEFAULT_BANNER_DISPLAY_TIME		3
+#define BANNER_DISPLAY_TIME			constant.var.value.banner_display_time
 
 //
 //	Provide the alias through which the page memory can be accessed

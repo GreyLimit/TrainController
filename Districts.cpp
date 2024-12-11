@@ -53,9 +53,80 @@ const Districts::district_data Districts::_district_data[ Districts::districts ]
 	//	enable			direction			adc_pin			adc_test			brake
 	//	------			---------			-------			--------			-----
 	//
-	{	SHIELD_DRIVER_A_ENABLE,	SHIELD_DRIVER_A_DIRECTION,	SHIELD_DRIVER_A_LOAD,	SHIELD_DRIVER_A_ANALOGUE,	SHIELD_DRIVER_A_BRAKE	},
-	{	SHIELD_DRIVER_B_ENABLE,	SHIELD_DRIVER_B_DIRECTION,	SHIELD_DRIVER_B_LOAD,	SHIELD_DRIVER_B_ANALOGUE,	SHIELD_DRIVER_B_BRAKE	}
+	{	SHIELD_DRIVER_A_ENABLE,	SHIELD_DRIVER_A_DIRECTION,	SHIELD_DRIVER_A_LOAD,	SHIELD_DRIVER_A_ANALOGUE,	SHIELD_DRIVER_A_BRAKE,	1	},
+	{	SHIELD_DRIVER_B_ENABLE,	SHIELD_DRIVER_B_DIRECTION,	SHIELD_DRIVER_B_LOAD,	SHIELD_DRIVER_B_ANALOGUE,	SHIELD_DRIVER_B_BRAKE,	1	}
+};
+
+//
+//	Allow this to build itself empty first.
+//
+Districts::Districts( void ) {
+	_zone = 0;
 }
+
+//
+//	Initialise the districts and set them into action.
+//
+void Districts::initialise( void ) {
+	//
+	//	Set up the districts according to the built in
+	//	table.
+	//
+	for( byte i = 0; i < districts; i++ ) {
+		const district_data	*d;
+		Pin_IO			brake;
+
+		d = &( _district_data[ i ]);
+		
+		brake.configure( progmem_read_byte( d->brake ), false );
+		brake.low();
+		
+		_district[ i ].assign(	progmem_read_byte( d->enable ),
+					progmem_read_byte( d->direction ),
+					progmem_read_byte( d->adc_pin ),
+					progmem_read_byte( d->adc_test ));
+	}
+	//
+	//	Ensure everything is off.
+	//
+	for( byte i = 0; i < districts; _district[ i++ ].power( false ));
+	_zone = 0;
+}
+
+
+//
+//	Return the number of the zone currently being operated.
+//
+byte Districts::zone( void ) {
+	return( _zone );
+}
+
+
+
+//
+//	Set the power to target zone.
+//
+void Districts::power( byte zone ) {
+	_zone = zone;
+	for( byte i = 0; i < districts; i++ ) _district[ i ].power( progmem_read_byte( _district_data[ i ].zone ) == zone );
+}
+
+//
+//	Return current load average (0-100) for indicated district
+//
+byte Districts::load_average( byte index ) {
+	if( index >= districts ) return( 0 );
+	return( _district[ index ].load_average());
+}
+
+//
+//	Return the state of this district
+//
+District::district_state Districts::state( byte index ) {
+	if( index >= districts ) return( District::state_unassigned );
+	return( _district[ index ].state());
+}
+
 
 //
 //	The districts manager.

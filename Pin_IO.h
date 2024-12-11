@@ -386,7 +386,7 @@ class Pin_IO {
 		//	Produces an object which is not aligned with
 		//	any device, and should not be used in this mode.
 		//
-		Pins_IO( void );
+		Pin_IO( void );
 
 		//
 		//	Device Constructor
@@ -404,7 +404,7 @@ class Pin_IO {
 		//	pull_up	True if the internal 3.3/5 volt pull up
 		//		resister should be enabled.
 		//
-		Pins_IO( byte dev, byte bit_num, bool input, bool pull_up = false );
+		Pin_IO( byte dev, byte bit_num, bool input, bool pull_up = false );
 
 		//
 		//	Platform Constructor
@@ -420,7 +420,7 @@ class Pin_IO {
 		//	pull_up	True if the internal 3.3/5 volt pull up
 		//		resister should be enabled.
 		//
-		Pins_IO( byte pin, bool input, bool pull_up = false );
+		Pin_IO( byte pin, bool input, bool pull_up = false );
 
 		//
 		//	Set/Reset the target of the Pin Object using a

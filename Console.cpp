@@ -32,7 +32,7 @@
 static Byte_Queue_Signal< CONSOLE_INPUT >	console_in;
 static Byte_Queue< CONSOLE_OUTPUT >		console_out;
 
-USART_IO		console;
+USART_IO					console;
 
 
 //

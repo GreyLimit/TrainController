@@ -31,12 +31,19 @@
 //	so allowing for output pins to be arranged to suite the MCU.
 //
 class Driver {
+public:
+	//
+	//	Define the maximum number of districts which the
+	//	class will accommodate.
+	//
+	static const byte	maximum_districts = MAXIMUM_DISTRICTS;
+	
 private:
 	//
 	//	What we need to know about each "district" of the DCC
 	//	environment.
 	//
-	struct driver {
+	struct driver_record {
 		Pin_IO		enable,
 				direction;
 	};
@@ -44,8 +51,8 @@ private:
 	//	Define the array of pins which we will be using to
 	//	access to real world.
 	//
-	driver	_district[ MAXIMUM_DISTRICTS ];
-	byte	_districts;
+	driver_record	_district[ maximum_districts ];
+	byte		_districts;
 
 
 public:
@@ -57,15 +64,16 @@ public:
 	}
 
 	//
-	//	Add a new pin to the configuration of the driver.
+	//	Add a new pin to the configuration of the driver where
+	//	the pin is referenced by the "platform" pin number.
 	//
 	bool add( byte *index, byte enable, byte direction ) {
-		driver	*d;
+		driver_record	*d;
 		
 		//
-		//	This is a pin referenced by the platform pin number.
+		//	Any space left?
 		//
-		if( _districts >= MAXIMUM_DISTRICTS ) return( false );
+		if( _districts >= maximum_districts ) return( false );
 
 		//
 		//	Locate a new record (and save its index number).
@@ -78,21 +86,25 @@ public:
 		d->enable.configure( enable, false );
 		d->enable.low();
 		d->direction.configure( direction, false );
-		d->direction.low()
+		d->direction.low();
 
 		//
 		//	Done!
 		//
 		return( true );
 	}
+	
+	//
+	//	Add a new pin to the configuration of the driver where
+	//	the pin is referenced by port number and bit within port.
+	//
 	bool add( byte *index, byte enable_dev, byte enable_bitno, byte direction_dev, byte direction_bitno ) {
-		driver	*d;
+		driver_record	*d;
 		
 		//
-		//	This is the pin referenced by port number and bit
-		//	within port number.
+		//	Any space left?
 		//
-		if( _districts >= MAXIMUM_DISTRICTS ) return( false );
+		if( _districts >= maximum_districts ) return( false );
 
 		//
 		//	Locate a new record (and save its index number).
@@ -105,7 +117,7 @@ public:
 		d->enable.configure( enable_dev, enable_bitno, false );
 		d->enable.low();
 		d->direction.configure( direction_dev, direction_bitno, false );
-		d->direction.low()
+		d->direction.low();
 
 		//
 		//	Done.
@@ -124,7 +136,7 @@ public:
 		for( byte i = 0; i < _districts; _district[ i++ ].enable.high());
 	}
 	void on( byte index ) {
-		if( index < _districts ) _district[ index ].enable.high());
+		if( index < _districts ) _district[ index ].enable.high();
 	}
 
 	//
@@ -134,7 +146,7 @@ public:
 		for( byte i = 0; i < _districts; _district[ i++ ].enable.low());
 	}
 	void off( byte index ) {
-		if( index < _districts ) _district[ index ].enable.low());
+		if( index < _districts ) _district[ index ].enable.low();
 	}
 
 	//
@@ -144,31 +156,18 @@ public:
 		for( byte i = 0; i < _districts; _district[ i++ ].direction.toggle());
 	}
 	void toggle( byte index ) {
-		if( index < _districts ) _district[ index ].direction.toggle());
+		if( index < _districts ) _district[ index ].direction.toggle();
 	}
 
 	//
 	//	Generic power on/off call.
 	//
 	void power( bool on ) {
-		if( on ) {
-			for( byte i = 0; i < _districts; _district[ i++ ].enable.high());
-		}
-		else {
-			for( byte i = 0; i < _districts; _district[ i++ ].enable.low());
-		}
+		for( byte i = 0; i < _districts; _district[ i++ ].enable.set( on ));
 	}
 	void power( byte index, bool on ) {
-		if( index < _districts ) {
-			if( on ) {
-				_district[ index ].enable.high());
-			}
-			else {
-				_district[ index ].enable.low());
-			}
-		}
+		if( index < _districts ) _district[ index ].enable.set( on );
 	}
-
 };
 
 //

@@ -7,7 +7,7 @@ While started as a branch from the Arduino DCC Generator with the intent of crea
 ## Version 0.2.3
 
 
-This version, really an extension of v0.2.2) sees the
+This version, really an extension of v0.2.2, sees the
 following modifications:
 
 * Introduction of a simplified Dijstra P/V signalling system
@@ -23,10 +23,13 @@ as a move away from my earlier attempts to create something
 resembling "real time" software towards something more structured
 and portable.
 
-This version is wholey different from the previous versions
+This version is entirely different from the previous versions
 containing systems for managing time in both "computer" and
-"human" scales, a system for the causing "tasks" to be called
-when and external (to that task) event raises a suitable flag.
+"human" scales, with a system for causing "tasks" to be called
+when an external (to that task) event raises a suitable flag.
+
+Various segments of the solution have been compartmentalised to make their coding
+and debugging easier (hopefully).
 
 ## Version 0.2.2
 

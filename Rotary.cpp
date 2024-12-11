@@ -19,7 +19,15 @@
 #include "Environment.h"
 #include "Rotary.h"
 #include "Code_Assurance.h"
+#include "Clock.h"
+#include "Errors.h"
 
+//
+//	Rotary scan period.
+//
+#ifndef ROTARY_SCAN_PERIOD
+#define ROTARY_SCAN_PERIOD	MSECS(5)
+#endif
 
 //
 //	The static state translation table.
@@ -61,50 +69,71 @@ static constexpr sbyte state_change[ 16 ] PROGMEM {
 //
 //	Constructor.
 //
-Rotary::Rotary( byte a, byte b ) {
-	
-	ASSERT( a != b );
-	
-	_pin_a = a;
-	_pin_b = b;
-	_pin_button = 255;		// An invalid pin number (hopefully).
-	
-	pinMode( a, INPUT_PULLUP );
-	pinMode( b, INPUT_PULLUP );
-	
-	_state = 0;
-	_posn = 0;
-	
-	_has_button = false;
-	_bstate = false;
-}
-Rotary::Rotary( byte a, byte b, byte button ) {
+void Rotary::initialise( byte a, byte b, byte button ) {
 	
 	ASSERT( a != b );
 	ASSERT( b != button );
 	ASSERT( a != button );
-	
-	_pin_a = a;
-	_pin_b = b;
-	_pin_button = button;
-	
-	pinMode( a, INPUT_PULLUP );
-	pinMode( b, INPUT_PULLUP );
-	
+
+	//
+	//	Configure our pins.
+	//
+	_pin_a.configure( a, true, true );
+	_pin_b.configure( b, true, true );
+	_pin_button.configure( button, true, true );
+	//
+	//	Set our states
+	//
 	_state = 0;
 	_posn = 0;
-	
-	pinMode( button, INPUT_PULLUP );
-	
-	_has_button = true;
 	_bstate = false;
+	_bcount = 0;
+	//
+	//	Set up the regular scanning.
+	//
+	event_timer.delay_event( ROTARY_SCAN_PERIOD, &_flag, true );
 }
+
+//
+//	Scan the rotary controller
+//
+void Rotary::process( void ) {
+	//
+	//	Capture the rotation of the knob - no need to do
+	//	anything else.
+	//
+	_posn += change();
+
+	//
+	//	Lets checkout the button status.
+	//
+	if( _pin_button.read()) {
+		//
+		//	Non-zero means the button has been released, and
+		//	if the count is non-zero then we need to add the
+		//	count value to the queue.
+		//
+		if( _bcount ) {
+			if( !_presses.write( _bcount )) errors.log_error( ROTARY_BUTTON_QUEUE_FULL, ROTARY_BUTTON_QUEUE );
+			_bcount = 0;
+		}
+	}
+	else {
+		//
+		//	Zero means the button is down, all we do here is
+		//	simply count how long it is being held down for.
+		//
+		_bcount++;
+	}
+}
+
+
 
 //
 //	Return the change since the last test
 //
 sbyte Rotary::change( void ) {
-	_state = (( _state & 3 ) << 2 )|(( digitalRead( _pin_a ) == HIGH )? 2: 0 )|(( digitalRead( _pin_b ) == HIGH )? 1: 0 );
+	_state = (( _state & 3 ) << 2 )|( _pin_a.read()? 2: 0 )|( _pin_b.read()? 1: 0 );
 	
 	ASSERT( _state < 16 );
 	
@@ -113,67 +142,25 @@ sbyte Rotary::change( void ) {
 
 
 //
-//	Report a movement in the control.
-//
-sbyte Rotary::movement( void ) {
-	sbyte	e;
-	
-	_posn += ( e = change());
-	return( e );
-}
-
-//
-//	Report cuurrent position
-//
-byte Rotary::position( void ) {
-	return( _posn += change());
-}
-
-//
-//	Reset current position
-//
-void Rotary::reset( byte posn ) {
-	_posn = posn;
-}
-
-//
 //	Get button press data.  This is how often this routine
 //	was called while the button was pressed.
 //
 word Rotary::pressed( void ) {
-	if( _has_button ) {
-		if( digitalRead( _pin_button ) == LOW ) {
-			//
-			//	Button is being held down (pin is shorted to earth)
-			//
-			if( _bstate ) {
-				//
-				//	was already down, keep counting.
-				//
-				if(!( _bcount += 1 )) _bcount -= 1;
-			}
-			else {
-				//
-				//	Just pressed - start counting.
-				//
-				_bstate = true;
-				_bcount = 0;
-			}
-		}
-		else {
-			//
-			//	Button is not held down (pin pulled high by internal resistor).
-			//
-			if( _bstate ) {
-				//
-				//	Was held down before, so flag released and return count.
-				//
-				_bstate = false;
-				return( _bcount );
-			}
-		}
-	}
+	word	count;
+	
+	if( _presses.read( &count )) return( count );
 	return( 0 );
+}
+
+//
+//	Report a movement in the control.
+//
+sbyte Rotary::movement( void ) {
+	sbyte	result;
+
+	result = _posn;
+	_posn = 0;
+	return( result );
 }
 
 

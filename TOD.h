@@ -21,10 +21,11 @@
 //
 //	Bring in the necessary definitions.
 //
-#include "Configuration.h"
 #include "Environment.h"
-#include "Task.h"
-#include "Clock.h"
+#include "Parameters.h"
+#include "Configuration.h"
+#include "Signal.h"
+#include "Task_Entry.h"
 
 //
 //	Define how many TOD Tasks we will manage.
@@ -36,7 +37,7 @@
 //
 //	Declare the TOD class.
 //
-class TOD : public Task {
+class TOD : public Task_Entry {
 	//
 	//	The TIME OF DAY element of the class
 	//	------------------------------------
@@ -65,21 +66,21 @@ private:
 	//
 	//	Here are the counters.
 	//
-	byte _stage[ stages ];
+	byte	_stage[ stages ];
 
 	//
 	//	Here is the flag required as part of the scheduling
 	//	process.
 	//
-	bool	_flag;
+	Signal	_flag;
 
 	//
 	//	The TOD Flag Manager components.
 	//
 	struct pending {
 		word	left;
-		bool	*flag;
-		task	*next;
+		Signal	*flag;
+		pending	*next;
 	};
 	
 	//
@@ -93,46 +94,19 @@ public:
 	//
 	//	Constructor
 	//
-	TOD( void ) {
-		//
-		//	The TOD values.
-		//
-		for( byte i = 0; i < stages; _stage[ i++ ] = 0 );
-		_flag = false;
-		//
-		//	The pending flags data.
-		//
-		_active = NIL( pending );
-		_free = NIL( pending );
-		for( byte i = 0; i < TIME_OF_DAY_TASKS; i++ ) {
-			_pending[ i ].next = _free;
-			_free = &( _pending[ i ]);
-		}
-	}
+	TOD( void );
 
 	//
 	//	Call to initialise the TOD system within the Clock and
 	//	Task sub-system.
 	//
-	void start( void ) {
-		event_timer.delay_event( MSECS( 1000 ), &_flag, true );
-		task_manager.add_task( this, &_flag );
-	}
+	void start( void );
 
 	//
 	//	Provide access to the TOD data.
 	//
-	byte read( byte index ) {
-		if( index < stages ) return( _stage[ index ]);
-		return( 0 );
-	}
-	bool write( byte index, byte value ) {
-		if(( index < stages )&&( value < progmem_read_byte( limit[ index ]))) {
-			_stage[ index ] = value;
-			return( true );
-		}
-		return( false );
-	}
+	byte read( byte index );
+	bool write( byte index, byte value );
 
 	//
 	//	Add a flag to the list of pending flag updates.  The
@@ -140,71 +114,26 @@ public:
 	//	seconds into the future.  There is no "time of day"
 	//	based clock scheduling.
 	//
-	bool add( word duration, bool *flag ) {
-		pending	*ptr, **adrs, *look;
-
-		if(( ptr = _free )) {
-			_free = ptr->next;
-			ptr->left = duration;
-			ptr->flag = flag;
-			adrs = &_active;
-			while(( look = *adrs )) {
-				if( ptr->left < look->left ) {
-					look->left -= ptr->left;
-					break;
-				}
-				ptr->left -= look->left;
-				adrs = &( look->next );
-			}
-			ptr->next = look;
-			*adrs = ptr;
-			return( true );
-		}
-		return( false );
-	}
+	bool add( word duration, Signal *flag );
 
 	//
 	//	The TASK entry point, called each time the flag is
 	//	set true by the clock system.
 	//
-	virtual bool process( void ) {
-		pending	*ptr;
-		//
-		//	Called every second to update the TOD and look
-		//	at the pending list.
-		//
-		//	Update the time of day.
-		//
-		for( byte i = 0; i < stages; i++ ) {
-			if( ++_stage[ i ] < progmem_read_byte( limit[ i ])) break;
-			_stage[ i ] = 0;
-		}
+	virtual void process( void );
 
-		//
-		//	Check out the pending actions.
-		//
-		while(( ptr = _active )) {
-			if(!( ptr->left-- )) {
-				*( ptr->flag ) = true;
-				_active = ptr->next;
-				ptr->next = _free;
-				_free = ptr;
-			}
-		}
-		
-		//
-		//	Tell scheduler we wish to continue being called.
-		//
-		return( true );
-	}
+	//
+	//	A human scale inline delay routine.
+	//
+	void inline_delay( word seconds );
 };
-
-#endif
 
 //
 //	And here is the TOD object.
 //
 extern TOD time_of_day;
+
+#endif
 
 //
 //	EOF

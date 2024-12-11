@@ -10,11 +10,18 @@
 #define _DISTRICTS_H_
 
 //
-//	Bring in the studd we need.
+//	Bring in the stuff we need.
 //
 #include "Configuration.h"
 #include "Environment.h"
 #include "District.h"
+
+//
+//	JEFF
+//
+//		Probably need to consider the creation of "zones" within the
+//		districts - specifically "Main Track" and "Programming Track"
+//
 
 //
 //	Define the object holding all of the districts and providing
@@ -52,49 +59,46 @@ private:
 			direction,
 			adc_pin,
 			adc_test,
-			brake;
+			brake,
+			zone;
 	};
 	static const district_data _district_data[ districts ] PROGMEM;
 
 	//
-	//	Our state regarding power: on / off.
+	//	Which zone is powered on.
 	//
-	bool		_powered_on;
+	byte		_zone;
 
 public:
 	//
 	//	Allow this to build itself empty first.
 	//
-	Districts( void ) {
-		_powered_on = false;
-	}
+	Districts( void );
 
 	//
 	//	Initialise the districts and set them into action.
 	//
-	void initialise( void ) {
-		for( byte i = 0; i < districts; i++ ) {
-			district_data	*d;
-			Pin_IO		brake;
-
-			d = &( _district_data[ i ]);
-			
-			brake.configure( progmem_read_byte( d->brake ), false );
-			brake.low();
-			
-			d->assign(	progmem_read_byte( d->enable ),
-					progmem_read_byte( d->direction ),
-					progmem_read_byte( d->adc_pin ),
-					progmem_read_byte( d->adc_test ));
-		}
-	}
+	void initialise( void );
 
 	//
-	//	Set the power status of the districts.
+	//	Return the number of the zone currently being operated.
 	//
-	void power( bool on ) {
-		for( i = 0; i < districts; _district[ i++ ].power( on ));
-	}
+	byte zone( void );
+
+	//
+	//	Set the power on for the districts "in zone".
+	//
+	void power( byte zone );
+
+	//
+	//	Return current load average (0-100) for indicated district
+	//
+	byte load_average( byte index );
+
+	//
+	//	Return the state of this district
+	//
+	District::district_state state( byte index );
 };
 
 //

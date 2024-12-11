@@ -23,14 +23,18 @@
 #include "Environment.h"
 #include "Parameters.h"
 #include "Configuration.h"
-#include "Code_Assurance.h"
-#include "Critical.h"
 
 //
 //	Declare the signal type forming the basis for the system.
 //
 class Signal {
 private:
+	//
+	//	Define the value limits for the counter.
+	//
+	static const byte minimum_count_value = 0;
+	static const byte maximum_count_value = MAXIMUM_BYTE;
+	
 	//
 	//	This is the Counter that forms the controlled data element.
 	//
@@ -44,48 +48,30 @@ public:
 	//	be reloaded with a know value and allows the signal
 	//	to be used as a resource meter.
 	//
-	Signal( void ) {
-		_count = 0;
-	}
-	Signal( byte load ) {
-		_count = load;
-	}
+	Signal( void );
+	Signal( byte load );
 
 	//
 	//	This routine "returns" a resource to the signal:
 	//
 	//		The internal count is increased by one.
 	//
-	void release( void ) {
-		Critical code;
-
-		_count++;
-		
-		ASSERT( _count > 0 );
-	}
+	void release( void );
 
 	//
 	//	This routine "claims" a resource from the signal:
 	//
 	//		The internal count is decreased by one.
 	//
-	void claim( void ) {
-		Critical code;
-
-		ASSERT( _count > 0 );
-
-		_count--;
-	}
+	void claim( void );
 
 	//
-	//	This is the routine used to test the availability
-	//	of a "resource".
+	//	This routine is used to test and claim a resource in
+	//	a single activity.  If the function returns true then
+	//	a resource *has already been* claimed as if claim()
+	//	had been successfully called.
 	//
-	//		Is the count greater than 0?
-	//
-	inline bool available( void ) {
-		return( _count > 0 );
-	}
+	bool acquire( void );
 };
 
 #endif

@@ -11,29 +11,43 @@
 #define _ROTARY_H_
 
 #include "Environment.h"
+#include "Parameters.h"
+#include "Configuration.h"
+#include "Pin_IO.h"
+#include "Signal.h"
+#include "Poly_Queue.h"
+#include "Task_Entry.h"
+
+//
+//	Make up the size of the internal rotary button queue.
+//
+#ifndef ROTARY_BUTTON_QUEUE
+#define ROTARY_BUTTON_QUEUE	4
+#endif
 
 //
 //	Declare the class used to handle all features of a rotary
 //	control (or any two sensor rotating device).
 //
-class Rotary {
+class Rotary : public Task_Entry {
 private:
 	//
 	//	Store the pin numbers we are watching.
 	//
-	byte	_pin_a,
-		_pin_b,
-		_pin_button;
+	Pin_IO		_pin_a,
+			_pin_b,
+			_pin_button;
 	
 	//
 	//	This is our current state
 	//
-	byte	_state;
+	byte		_state;
 	
 	//
-	//	Where we think we are in absolute terms
+	//	This is the rotary adjustment since the object was
+	//	last asked about it.
 	//
-	byte	_posn;
+	sbyte		_posn;
 
 	//
 	//	Return the change since the last test
@@ -41,29 +55,39 @@ private:
 	sbyte change( void );
 	
 	//
-	//	Button related code (if present)
+	//	Button related code.
 	//
-	bool	_has_button,
-		_bstate;
-	word	_bcount;
+	bool		_bstate;
+	word		_bcount;
+
+	//
+	//	Include a small byte buffer for the button presses.
+	//
+	Poly_Queue< word, ROTARY_BUTTON_QUEUE >
+			_presses;
+
+	//
+	//	This is the flag that calls up the regular checking of
+	//	the rotary knob.
+	//
+	Signal		_flag;
 		
 public:
 	//
-	//	Constructors.
+	//	Set up the control knob.
 	//
-	Rotary( byte a, byte b );
-	Rotary( byte a, byte b, byte button );
+	void initialise( byte a, byte b, byte button );
+
+	//
+	//	Scan the rotary controller
+	//
+	virtual void process( void );
 	
 	//
 	//	Report a movement in the control.
 	//
 	sbyte movement( void );
-	
-	//
-	//	Report cuurrent position
-	//
-	byte position( void );
-	
+
 	//
 	//	Reset current position
 	//

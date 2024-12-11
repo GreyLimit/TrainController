@@ -11,7 +11,6 @@
 
 #ifndef _AVERAGE_H_
 #define _AVERAGE_H_
-#endif
 
 //
 //	Grab what we need.

@@ -19,28 +19,14 @@
 ///	USA
 ///
 
-#include <limits.h>
-#include <stdlib.h>
-#include <inttypes.h>
-#include <avr/pgmspace.h>
-#include <avr/io.h>
-#include <avr/interrupt.h>
-#include <util/delay.h>
-#include <compat/twi.h>
-
-//
-//	The configuration of the firmware.
-//
-#include "Configuration.h"
-#include "Trace.h"
-
 //
 //	Environment for this module.
 //
-#include "Arduino.h"
-#include "pins_arduino.h"
-#include "Environment.h"
 #include "TWI.h"
+#include "Clock.h"
+#include "Code_Assurance.h"
+#include "Critical.h"
+#include "Task.h"
 
 //
 //	The following data structures capture a simplified view of the
@@ -75,25 +61,25 @@
 //	bit either 1 (for reading) or 0 (for writing).  No data is read
 //	of transmitted.
 //
-//	TWI_MODE_QUICK_READ
-//	-------------------
+//	MODE_QUICK_READ
+//	---------------
 //	Master:	SaaaaaaaR P
 //	Slave:           A
 //
-//	TWI_MODE_QUICK_WRITE
-//	--------------------
+//	MODE_QUICK_WRITE
+//	----------------
 //	Master:	SaaaaaaaW P
 //	Slave:           A
 //
 static const TWI::machine_state TWI::mode_quick_read[] PROGMEM = {
-	state_state, state_start_complete,
+	state_start, state_start_complete,
 	state_adrs_read, state_adrs_ack,
-	state_stop, state_good_callback
+	state_stop, state_finish_action
 };
 static const TWI::machine_state TWI::mode_quick_write[] PROGMEM = {
-	state_state, state_start_complete,
+	state_start, state_start_complete,
 	state_adrs_write, state_adrs_ack,
-	state_stop, state_good_callback
+	state_stop, state_finish_action
 };
 
 //
@@ -102,33 +88,33 @@ static const TWI::machine_state TWI::mode_quick_write[] PROGMEM = {
 //	6.5.12 Write 64 protocol) conform to the following underlying
 //	hardware exchange:
 //
-//	TWI_MODE_SEND_DATA
-//	------------------
+//	MODE_SEND_DATA
+//	--------------
 //	Master:	SaaaaaaaW dddddddd P
 //	Slave:	         A        A
 //	Repeat:	          ^^^^^^^^^
 //
 static const TWI::machine_state TWI::mode_send_data[] PROGMEM = {
-	state_state, state_start_complete,
+	state_start, state_start_complete,
 	state_adrs_write, state_adrs_ack,
 	state_send_byte, state_send_ack_loop,
-	state_stop, state_good_callback
+	state_stop, state_finish_action
 };
 //
 //	The (6.5.3) Receive Byte is the only command which can directly
 //	obtain any data form the slave *without* first asking for
 //	something:
 //
-//	TWI_MODE_RECEIVE_BYTE
-//	---------------------
+//	MODE_RECEIVE_BYTE
+//	-----------------
 //	Master:	SaaaaaaaR         NP
 //	Slave:	         Adddddddd
 //
 static const TWI::machine_state TWI::mode_receive_byte[] PROGMEM = {
-	state_state, state_start_complete,
+	state_start, state_start_complete,
 	state_adrs_read, state_adrs_ack,
 	state_recv_ready, state_recv_byte_loop,
-	state_stop, state_good_callback
+	state_stop, state_finish_action
 };
 //
 //	All of the remaining commands (6.5.4 Write Byte/Word, 6.5.5
@@ -137,32 +123,32 @@ static const TWI::machine_state TWI::mode_receive_byte[] PROGMEM = {
 //	Read 32 protocol, 6.5.13 Read 64 protocol) conform to a common
 //	data exchange protocol:
 //
-//	TWI_MODE_DATA_EXCHANGE
-//	----------------------
+//	MODE_DATA_EXCHANGE
+//	------------------
 //	Master:	SaaaaaaaW dddddddd TSaaaaaaaR         A          NP
 //	Slave:	         A        A          Adddddddd   dddddddd
 //	Repeat:	          ^^^^^^^^^           ^^^^^^^^^
 //
 static const TWI::machine_state TWI::mode_data_exchange[] PROGMEM = {
-	state_state, state_start_complete,
+	state_start, state_start_complete,
 	state_adrs_write, state_adrs_ack,
 	state_send_byte, state_send_ack_loop,
 	state_restart, state_start_complete,
 	state_adrs_read, state_adrs_ack,
 	state_recv_ready, state_recv_byte_loop,
-	state_stop, state_good_callback
+	state_stop, state_finish_action
 };
 
 //
-//	twi_abortTransaction
+//	abort_transaction
 //	--------------------
 //
 //	This incomplete sequence is not applied in the first instance
 //	but is used to "redirect" a transaction which has failed and
 //	needs to completed with subsequent tidy up.
 //
-static const TWI::machine_state abort_transaction[] PROGMEM = {
-	state_stop, state_fail_callback
+static const TWI::machine_state TWI::abort_transaction[] PROGMEM = {
+	state_stop, state_finish_action
 };
 
 
@@ -276,6 +262,608 @@ static const TWI::bitrate TWI::bitrates[] PROGMEM = {
 	//
 	{	0,	0,	0	}
 };
+
+//
+//	void reset_hardware( void )
+//	------------------------------
+//
+//	This is a final "let us try power off then on" the TWI
+//	hardware to regain control of the system.
+//
+void TWI::reset_hardware( void ) {
+	byte	twcr;
+	
+	//
+	//	We are only focused on the hardware, we will not
+	//	change any firmware settings.
+	//
+	//	Save current value.
+	//
+	twcr = TWCR;
+	//
+	//	Clear the control register to reset hardware.
+	//
+	TWCR = 0;
+	//
+	//	Pause execution of the TWI code.  For this
+	//	to simplify this code we use the "in-line"
+	//	delay provided by the event_timer module. 
+	//
+	event_timer.inline_delay( USECS( hardware_reset ));
+	
+	//
+	//	Now put the control register back, but without
+	//	a TWSTA, TWSTO or TWINT set.
+	//
+	TWCR = twcr & ~( TWSTA | TWSTO | TWINT );
+}
+
+
+
+//
+//	void next_action( void )
+//	------------------------
+//
+//	Routine to handle bringing a action to an end and launching
+//	a new one.
+//
+void TWI::next_action( void ) {
+	//
+	//	Are we replacing a now finished job?
+	//
+	if( _active ) {
+		//
+		//	Tell creator action has completed.
+		//
+		_active->flag->release();
+		//
+		//	Then return to queue.
+		//
+		_queue_len -= 1;
+		if(( _queue_out += 1 ) >= maximum_queue ) _queue_out = 0;
+	}
+	//
+	//	Is there anything left in the queue?
+	//
+	if( _queue_len ) {
+		//
+		//	Yes.
+		//
+		_active = &( _queue[ _queue_out ]);
+	}
+	else {
+		//
+		//	No.
+		//
+		_active = NIL( transaction );
+	}
+}
+
+
+//
+//	bool queue_transaction( const machine_state *action, byte address, byte *buffer, byte send, byte recv, bool *flag, error_code *result )
+//	------------------------------------------------------------------------------------------------------------------------------------------
+//
+//	Initiates an asynchronous data exchange with a specified slave device, with the parameters supplying
+//	the required details:
+//
+//		action		The list of actions which implement this transaction
+//		address		The slave address being targeted
+//		buffer		The address of a byte array where sent and returned data will be stored.
+//		send		The number of bytes to send from the buffer area
+//		recv		The number of bytes which will be returned into the buffer area
+//		flag		Address of a flag to set to true when the command completes
+//		result		Address of an error_code variable where the status of the completed command is placed
+//
+//	Returns true if the exchange has been successfully queued, false otherwise.
+//
+//	Note:	The buffer space address passed into this routine is kept and accessed
+//		asynchronously from the main flow of the program.  To this end the area
+//		must be allocated in such a way that it remains valid from the point of
+//		calling this routine to the point at which the flag is set.
+//
+//		Also note that if multiple exchange requests are queued, then each must
+//		have its own distinct buffer space to avoid data being over written.
+//
+//	The API reserves the right to implement a pending exchange queue of arbitrary length
+//	from zero entries.  The implication is that with a queue of length zero all
+//	exchange requests will fail if any exchange is currently taking place.  The code
+//	must be prepared for this possibility as the same situation would apply with any
+//	size queue which has been filled with pending requests.
+//
+bool TWI::queue_transaction( const TWI::machine_state *action, byte adrs, byte *buffer, byte send, byte recv, Signal *flag, TWI::error_code *result ) {
+	transaction	*ptr;
+
+	ASSERT( flag != NIL( Signal ));
+	ASSERT( result != NIL( error_code ));
+
+	//
+	//	Is there space for a new request?
+	//
+	if( _queue_len >= maximum_queue ) return( false );
+	//
+	//	Locate the next available slot and adjust queue
+	//	appropriately.
+	//
+	ptr = &( _queue[ _queue_in++ ]);
+	if( _queue_in >= maximum_queue ) _queue_in = 0;
+	//
+	//	"ptr" is the address of our queue record, so we can now
+	//	fill in this record with the supplied details.
+	//
+	ptr->action = action;
+	ptr->target = adrs;
+	ptr->buffer = buffer;
+	ptr->next = 0;			// Also set up by the START and RESTART actions
+	ptr->send = send;
+	ptr->recv = recv;
+	ptr->flag = flag;
+	ptr->result = result;
+	//
+	//	Last action; increase the queue length and (if this is
+	//	the only item in the queue) release the flag to begin
+	//	the asynchronous processing.
+	//
+	if(( _queue_len += 1 ) == 1 ) _flag.release();
+	//
+	//	Good to go!
+	//
+	return( true );
+}
+
+//
+//	void set_frequency( byte freq )
+//	-------------------------------
+//
+//	Set the TWI Clock frequency by setting the TWBR and
+//	TWPS (TWSR 1:0) registers.
+//
+//	The frequency is (currently) passed in as a multiple
+//	of 10KHz (i.e. if freq == 25 then clock = 250,000 Hz)
+//
+//	There is an assumption, a reasonable one I believe, that
+//	the table that this routine accesses contains at least ONE line
+//	for a valid TWI/I2C clock rate.  Failure to ensure this will
+//	render any use of the TWI hardware pretty much impossible.
+//
+void TWI::set_frequency( byte freq ) {
+	const bitrate	*look;
+	byte		found,
+			twbr,
+			twps;
+
+	twbr = 0;
+	twps = 0;
+	look = bitrates;
+	while(( found = progmem_read_byte( look->freq ))) {
+		twbr = progmem_read_byte( look->twbr );
+		twps = progmem_read_byte( look->twps );
+		if( found <= freq ) break;
+		look++;
+	}
+	TWSR = twps;
+	TWBR = twbr;
+}
+
+//
+//	byte best_frequency( byte freq )
+//	--------------------------------
+//
+//	Return the identity of the best available
+//	clock speed at (or below) the value passed in.
+//
+byte TWI::best_frequency( byte freq ) {
+	const bitrate	*look;
+	byte		found;
+
+	look = bitrates;
+	while(( found = progmem_read_byte( look->freq ))) {
+		if( found <= freq ) break;
+		look++;
+	}
+	return( found );
+}
+
+//
+//	byte lowest_frequency( void )
+//	-----------------------------
+//
+//	Return the identity of the slowest available
+//	clock speed.  This could be useful when a master
+//	and a slave negotiate the best available
+//	common speed .. you need to start from somewhere.
+//
+//	This *should* always come out as "1", and (currently)
+//	reflects a speed of 10Kbps
+//
+byte TWI::lowest_frequency( void ) {
+	const bitrate	*look;
+	byte		found,
+			last;
+
+	look = bitrates;
+	last = maximum_frequency;
+	while(( found = progmem_read_byte( look->freq ))) {
+		last = found;
+		look++;
+	}
+	return( last );
+}
+
+
+//
+//	Constructor initialises the TWI to the default
+//
+TWI::TWI( void ) {
+	//
+	//	Prepare the queue as empty.
+	//
+	_queue_len = 0;
+	_queue_in = 0;
+	_queue_out = 0;
+
+	//
+	//	Initially there is no active exchange.
+	//
+	_active = NIL( transaction );
+
+	//
+	//	Disable slave configuration
+	//
+	TWAR = 0;
+
+	//
+	//	Optionally enable internal pull-up resistors required
+	//	for TWI protocol.
+	//
+	pinMode( SDA, INPUT_PULLUP );
+	pinMode( SCL, INPUT_PULLUP );
+
+	//
+	//	Initialise TWI pre-scaler and default bit rate.
+	//
+	set_frequency( frequency );
+
+	//
+	//	Attach ourselves to the task manager so that
+	//	we process the interrupts asynchronously.
+	//
+	task_manager.add_task( this, &_flag );
+
+	//
+	//	Enable TWI module and TWI interrupt.
+	//
+	TWCR = bit( TWIE ) | bit( TWEN );
+}
+
+//
+//	The (6.5.1) Quick Commands
+//	--------------------------
+//
+bool TWI::quick_read( byte adrs, Signal *flag, TWI::error_code *result ) {
+	return( queue_transaction( mode_quick_read, adrs, NULL, 0, 0, flag, result ));
+}
+
+bool TWI::quick_write( byte adrs, Signal *flag, error_code *result ) {
+	return( queue_transaction( mode_quick_write, adrs, NULL, 0, 0, flag, result ));
+}
+
+//
+//	All "just send data" commands
+//	-----------------------------
+//	(6.5.2) Send Byte
+//	(6.5.4) Write Byte/Word
+//	(6.5.7) Block Write/Read
+//	(6.5.10) Write 32 protocol
+//	(6.5.12) Write 64 protocol
+//
+bool TWI::send_data( byte adrs, byte *buffer, byte send, Signal *flag, error_code *result ) {
+	return( queue_transaction( mode_send_data, adrs, buffer, send, 0, flag, result ));
+}
+
+//
+//	The (6.5.3) Receive Byte
+//	------------------------
+//
+bool TWI::receive_byte( byte adrs, byte *buffer, Signal *flag, error_code *result ) {
+	return( queue_transaction( mode_receive_byte, adrs, buffer, 0, 1, flag, result ));
+}
+
+//
+//	All "exchange data" commands
+//	----------------------------
+//	(6.5.4) Write Byte/Word
+//	(6.5.5) Read Byte/Word
+//	(6.5.6) Process Call
+//	(6.5.8) Block Write-Block Read Process Call
+//	(6.5.9) SMBus Host Notify protocol
+//	(6.5.11) Read 32 protocol
+//	(6.5.13) Read 64 protocol
+//
+bool TWI::exchange( byte adrs, byte *buffer, byte send, byte recv, Signal *flag, error_code *result ) {
+	return( queue_transaction( mode_data_exchange, adrs, buffer, send, recv, flag, result ));
+}
+
+
+//
+//	void process( void )
+//	--------------------------
+//
+//	Using the TWI state supplied drive the transaction record forward.
+//	When the routine returns something will have been done.
+//
+void TWI::process( void ) {
+	
+	ASSERT( _active != NIL( transaction ));
+	
+	//
+	//	The purpose of this routine is to handle the new state
+	//	by moving on the master transaction machine forward.
+	//
+machine_loop:
+	switch((machine_state)progmem_read_byte_at( _active->action )) {
+		case state_start: {
+			//
+			//	Generate the start condition and move the
+			//	action pointer forward to the next step.
+			//
+			_active->next = 0;	// New index into the buffer
+			_active->action++;
+			start();
+			break;
+		}
+		case state_restart: {
+			//
+			//	Generate a restart condition and move the
+			//	action pointer forward to the next step.
+			//
+			_active->next = 0;	// Reset index into the buffer
+			_active->action++;
+			start();
+			break;
+		}
+		case state_start_complete: {
+			//
+			//	We are waiting for the start (or restart) to complete successfully.
+			//	If it has completed then move to the next step in the machine.
+			//      If not then redirect machine to the abort transaction code.
+			//
+			switch( _twsr ) {
+				case TW_START:
+				case TW_REP_START: {
+					//
+					//	Move to next step in the machine.
+					//
+					_active->action++;
+					break;
+				}
+				default: {
+					//
+					//	Not a state we are anticipating, abort transaction
+					//
+					_active->action = abort_transaction;
+					*( _active->result ) = error_starting;
+					break;
+				}
+			}
+			//
+			//	We have not "done" anything so we go back to the start of the
+			//	routine and read the next step in the machine.
+			//
+			goto machine_loop;
+		}
+		case state_stop: {
+			//
+			//	Generate a stop condition and move the
+			//	action pointer forward to the next step.
+			//
+			stop();
+			_active->action++;
+			break;
+		}
+		case state_adrs_read: {
+			//
+			//	We now send out the slave address from
+			//	which we want to read data.
+			//
+			//	If we are only getting a single byte, then
+			//	the Ack flag needs to be false, otherwise
+			//	we set it to true.
+			//
+			send_target( _active->target, false );
+			_active->action++;
+			break;
+		}
+		case state_adrs_write: {
+			//
+			//	We now send out the slave address with
+			//	WRITE signified.
+			//
+			send_target( _active->target, true );
+			_active->action++;
+			break;
+		}
+		case state_adrs_ack: {
+			//
+			//	We are waiting for the address byte to
+			//	complete, then we check the status to
+			//	see if we were ack'd or nack'd by the slave.
+			//
+			switch( _twsr ) {
+				case TW_MT_SLA_ACK:
+				case TW_MR_SLA_ACK: {
+					//
+					//	The slave has Ackd their address byte
+					//	for either read or write (this step in the
+					//	master machine does not care which).  Move
+					//	to the next step in the machine.
+					//
+					_active->action++;
+					break;
+				}
+				case TW_MT_SLA_NACK:
+				case TW_MR_SLA_NACK: {
+					//
+					//	The slave has NOT Ackd their address byte, so
+					//	log an error and then move to the next step in
+					//	the machine.
+					//
+					_active->action = abort_transaction;
+					*( _active->result ) = error_address;
+					break;
+				}
+				default: {
+					//
+					//	..and again, but a different error.
+					//
+					_active->action = abort_transaction;
+					*( _active->result ) = error_transaction;
+					break;
+				}
+			}
+			goto machine_loop;
+		}
+		case state_send_byte: {
+			//
+			//	We have to send a byte to the slave
+			//
+			send_byte( _active->buffer[ _active->next++ ]);
+			_active->action++;
+			break;
+		}
+		case state_send_ack_loop: {
+			//
+			//	Has the data been received?  The ack
+			//	will tell us.
+			//
+			switch( _twsr ) {
+				case TW_MT_DATA_ACK: {
+					//
+					//	The sent data byte has been Ackd.  If there
+					//	are more data bytes to send go BACK one step,
+					//	otherwise move forwards to the next step.
+					//
+					if( _active->next < _active->send ) {
+						_active->action--;
+					}
+					else {
+						_active->action++;
+					}
+					break;
+				}
+				case TW_MT_DATA_NACK: {
+					//
+					//	The data byte was NAckd, the write has failed.
+					//
+					_active->action = abort_transaction;
+					*( _active->result ) = error_write_fail;
+					break;
+				}
+				default: {
+					//
+					//	Other state, generate another error.
+					//
+					_active->action = abort_transaction;
+					*( _active->result ) = error_transaction;
+					break;
+				}
+			}
+			goto machine_loop;
+		}
+		case state_recv_ready: {
+			//
+			//	Here we let the system know that we are
+			//	ready to receive another byte from the
+			//	slave and (through Ack/NAck) if this will
+			//	be the last byte.
+			//
+			read_ack( _active->next < ( _active->recv-1 ));
+			_active->action++;
+			break;
+		}
+		case state_recv_byte_loop: {
+			//
+			//	Save that byte of data!
+			//
+			if( _active->next < _active->recv ) {
+				_active->buffer[ _active->next++ ] = read_byte();
+			}
+			else {
+				(void)read_byte();
+			}
+			//
+			//	Now choose what to do.
+			//
+			switch( _twsr ) {
+				case TW_MR_DATA_ACK: {
+					//
+					//	We have a byte of data, the system
+					//	has already sent an "Ack" (so this
+					//	is not the last byte).  We roll
+					//	back to the previous action.
+					//
+					_active->action--;
+					break;
+				}
+				case TW_MR_DATA_NACK: {
+					//
+					//	We have a byte of data, the system
+					//	has already sent an "NAck" (so this
+					//	IS the last byte).  Move onto the
+					//	next action.
+					//
+					_active->action++;
+					break;
+				}
+				default: {
+					//
+					//	Some sort of transaction error.
+					//
+					_active->action = abort_transaction;
+					*( _active->result ) = error_transaction;
+					break;
+				}
+			}
+			goto machine_loop;
+		}
+		case state_finish_action: {
+			//
+			//	Finish off the transaction and start
+			//	another if one is queued.
+			//
+			next_action();
+			goto machine_loop;
+		}
+		default: {
+			//
+			//	Everything that this module does should be
+			//	handled before the default case.  This is
+			//	and error!
+			//
+			ABORT();
+			//
+			//	In the event that there has been coding
+			//	error we could try recovery options...
+			//
+			_active->action = abort_transaction;
+			*( _active->result ) = error_transaction;
+			goto machine_loop;
+		}
+	}
+}
+
+//
+//	void process_event( void )
+//	--------------------------
+//
+//	This routine is called by the ISR to alert the driver
+//	that a change in the TWI hardware state has taken
+//	place.
+//
+void TWI::process_event( void ) {
+	_twsr = TWSR & 0xf8;
+	_flag.release();
+}
 
 
 //

@@ -62,12 +62,15 @@ static const char string_pgp[] PROGMEM = "power_grace_period";
 static const char string_pi[] PROGMEM = "periodic_interval";
 static const char string_lui[] PROGMEM = "lcd_update_interval";
 static const char string_lri[] PROGMEM = "line_refresh_interval";
+static const char string_kpri[] PROGMEM = "keypad_reading_interval";
 static const char string_lkp[] PROGMEM = "long_key_press";
 static const char string_drp[] PROGMEM = "driver_reset_period";
 static const char string_dpp[] PROGMEM = "driver_phase_period";
+static const char string_rsp[] PROGMEM = "rotary_scan_period";
 static const char string_rup[] PROGMEM = "rotary_update_period";
 static const char string_dlp[] PROGMEM = "dynamic_load_period";
 static const char string_dlr[] PROGMEM = "dynamic_load_reports";
+static const char string_bdt[] PROGMEM = "banner_display_time";
 static const char string_tcr[] PROGMEM = "transient_command_repeats";
 static const char string_smrr[] PROGMEM = "service_mode_reset_repeats";
 static const char string_smcr[] PROGMEM = "service_mode_command_repeats";
@@ -86,17 +89,20 @@ static const ConstantValue constant_value[ CONSTANTS ] PROGMEM = {
 	{ string_pi,	DEFAULT_PERIODIC_INTERVAL,		&PERIODIC_INTERVAL,		NULL					},
 	{ string_lui,	DEFAULT_LCD_UPDATE_INTERVAL,		&LCD_UPDATE_INTERVAL,		NULL					},
 	{ string_lri,	DEFAULT_LINE_REFRESH_INTERVAL,		&LINE_REFRESH_INTERVAL,		NULL					},
+	{ string_kpri,	DEFAULT_KEYPAD_READING_INTERVAL,	&KEYPAD_READING_INTERVAL,	NULL					},
 	{ string_lkp,	DEFAULT_LONG_KEY_PRESS,			&LONG_KEY_PRESS,		NULL					},
-	{ string_drp,	DEFAULT_DRIVER_RESET_PERIOD,		&DRIVER_RESET_PERIOD,		NULL					},
 // 10
+	{ string_drp,	DEFAULT_DRIVER_RESET_PERIOD,		&DRIVER_RESET_PERIOD,		NULL					},
 	{ string_dpp,	DEFAULT_DRIVER_PHASE_PERIOD,		&DRIVER_PHASE_PERIOD,		NULL					},
+	{ string_rsp,	DEFAULT_ROTARY_SCAN_PERIOD,		&ROTARY_SCAN_PERIOD,		NULL					},
 	{ string_rup,	DEFAULT_ROTARY_UPDATE_PERIOD,		&ROTARY_UPDATE_PERIOD,		NULL					},
 	{ string_dlp,	DEFAULT_DYNAMIC_LOAD_PERIOD,		&DYNAMIC_LOAD_PERIOD,		NULL					},
-	{ string_dlr,	DEFAULT_DYNAMIC_LOAD_REPORTS,		NULL,				&DYNAMIC_LOAD_REPORTS			},
-	{ string_tcr,	DEFAULT_TRANSIENT_COMMAND_REPEATS,	NULL,				&TRANSIENT_COMMAND_REPEATS		},
 // 15
+	{ string_dlr,	DEFAULT_DYNAMIC_LOAD_REPORTS,		NULL,				&DYNAMIC_LOAD_REPORTS			},
+	{ string_bdt,	DEFAULT_BANNER_DISPLAY_TIME,		NULL,				&BANNER_DISPLAY_TIME			},
+	{ string_tcr,	DEFAULT_TRANSIENT_COMMAND_REPEATS,	NULL,				&TRANSIENT_COMMAND_REPEATS		},
 	{ string_smrr,	DEFAULT_SERVICE_MODE_RESET_REPEATS,	NULL,				&SERVICE_MODE_RESET_REPEATS		},
-	{ string_smcr,	DEFAULT_SERVICE_MODE_COMMAND_REPEATS,	NULL,				&SERVICE_MODE_COMMAND_REPEATS		},
+	{ string_smcr,	DEFAULT_SERVICE_MODE_COMMAND_REPEATS,	NULL,				&SERVICE_MODE_COMMAND_REPEATS		}
 };
 
 //
@@ -128,7 +134,7 @@ static word checksum_consts( void ) {
 //
 //	Re-write the constants back to the EEPROM.
 //
-extern void record_constants( void ) {
+void record_constants( void ) {
 	constant.var.check.sum = checksum_consts();
 	EEPROM.put( 0, constant );
 }

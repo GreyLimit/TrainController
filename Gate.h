@@ -17,7 +17,7 @@
 //	We need the Critical code to manage interrupts.
 //
 #include "Configuration.h"
-#icnlude "Environment.h"
+#include "Environment.h"
 #include "Critical.h"
 
 //
@@ -44,7 +44,7 @@ public:
 	void release( void ) {
 		_locked = false;
 	}
-}
+};
 
 #endif
 

@@ -31,8 +31,32 @@ class Byte_Queue_API {
 		//	This is 65535, so five is the minimum value.
 		//
 		static const byte number_buffer = 6;
+
+		//
+		//	Implementation of the "cooked" synchronous mode.
+		//
+		bool		_synchronous;
 		
 	public:
+
+		//
+		//	Constructor.
+		//
+		Byte_Queue_API( void ) {
+			_synchronous = false;
+		}
+
+		//
+		//	Control the synchronous flag.
+		//
+		bool synchronous( bool on ) {
+			bool	prev;
+
+			prev = _synchronous;
+			_synchronous = on;
+			return( prev );
+		}
+	
 		//
 		//	Here are the standard IO routines into
 		//	a byte queue class.
@@ -79,6 +103,7 @@ class Byte_Queue_API {
 		//	buffer/queue.
 		//
 		bool print( char c ) {
+			if( _synchronous && Critical::normal_code()) while( !space());
 			return( write( c ));
 		}
 		
@@ -135,6 +160,7 @@ class Byte_Queue_API {
 			}
 			return( print( (word)i ));
 		}
+		
 		bool println( int i ) {
 			return( print( i ) && println());
 		}
@@ -148,6 +174,12 @@ class Byte_Queue_API {
 			return( print( s ) && println());
 		}
 
+		bool print( const char *s, byte l ) {
+			if( l > space()) return( false );
+			while( l-- ) print( *s++ );
+			return( true );
+		}
+
 		//
 		//	The following command supports printing
 		//	directly out of program memory.
@@ -156,6 +188,12 @@ class Byte_Queue_API {
 			char	c;
 
 			while(( c = progmem_read_byte_at( pm++ )) != EOS ) if( !print( c )) return;
+		}
+		void println_PROGMEM( const char *pm ) {
+			char	c;
+
+			while(( c = progmem_read_byte_at( pm++ )) != EOS ) if( !print( c )) break;
+			println();
 		}
 };
 
@@ -289,7 +327,7 @@ class Byte_Queue_Signal : public Byte_Queue_API {
 		//
 		//	Constructor only.
 		//	
-		Byte_Queue( void ) {
+		Byte_Queue_Signal( void ) {
 			//
 			//	Queue indexes and length
 			//

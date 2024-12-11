@@ -10,7 +10,7 @@
 #include "Parameters.h"
 #include "Configuration.h"
 #include "Formatting.h"
-
+#include "Code_Assurance.h"
 
 //
 //	Numerical output formatting routines

@@ -13,6 +13,7 @@
 #include "Parameters.h"
 #include "Configuration.h"
 #include "Protocol.h"
+#include "Byte_Queue.h"
 
 //
 //	Reply Construction routines.
@@ -27,13 +28,13 @@
 //	there is plenty of code flash available but memory is
 //	tight on the smaller MCUs).
 //
-template< byte size >
+template< byte SIZE >
 class Buffer {
 private:
 	//
 	//	Declare the size of the internal buffer
 	//
-	static const byte	buffer_size = size;
+	static const byte	buffer_size = SIZE;
 
 	//
 	//	Define the maximum number of digits required to convert
@@ -59,7 +60,7 @@ private:
 	//	The primitives which are combined to fill in the buffer.
 	//
 	bool start( char code ) {
-		if( buf->left > 2 ) {
+		if( _left > 2 ) {
 			*_ptr++ = Protocol::lead_in;
 			*_ptr++ = code;
 			_left -= 2;
@@ -69,7 +70,7 @@ private:
 	}
 
 	bool end( void ) {
-		if( buf->left > 2 ) {
+		if( _left > 2 ) {
 			*_ptr++ = Protocol::lead_out;
 			*_ptr++ = NL;
 			*_ptr = EOS;
@@ -80,7 +81,7 @@ private:
 	}
 
 	bool add( char c ) {
-		if( buf->left > 1 ) {
+		if( _left > 1 ) {
 			*_ptr++ = c;
 			_left -= 1;
 			return( true );
@@ -156,7 +157,7 @@ private:
 	}
 	
 public:
-	void Buffer( void ) {
+	Buffer( void ) {
 		_ptr = _buffer;
 		_left = buffer_size;
 	}
@@ -182,7 +183,11 @@ public:
 	}
 
 	void copy( char *to, byte len ) {
-		memcpy( to, _buffer, min( len, buffer_size ));
+		memcpy( to, _buffer, min( len, size()));
+	}
+
+	bool send( Byte_Queue_API *to ) {
+		return( to->print( _buffer, size()));
 	}
 };
 

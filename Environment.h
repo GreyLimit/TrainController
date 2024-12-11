@@ -17,8 +17,25 @@
 //
 //	Bring in the necessary IO and Interrupt definitions.
 //
+//	JEFF
+//
+//		In light of the fact that I am driving all the
+//		the hardware *directly* I do not think that many
+//		of these header files are required.
+//
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/pgmspace.h>
+
+#include <util/twi.h>
+#include <util/delay.h>
+
+#include <compat/twi.h>
+
+#include <limits.h>
+#include <stdlib.h>
+#include <inttypes.h>
+
 
 #endif
 
@@ -98,6 +115,13 @@
 #endif
 
 //
+//	Define macro that will convert bit pattern
+//	tests (using '&', '^' or '|') into primary
+//	true/false values of type bool.
+//
+#define BOOL(e)		((bool)((e)!=0))
+
+//
 //	Define a symbol that will indicate that a case
 //	selection (inside a switch statement) should
 //	(and is expected to) fall through to the case
@@ -107,7 +131,6 @@
 //	selected, the correct fall through can be used.
 //
 #define FALL_THROUGH	__attribute__((fallthrough))
-
 
 //
 //	An integer error value
@@ -282,6 +305,7 @@ typedef enum {
 //
 #define EOS		'\0'
 #define SPACE		' '
+#define TAB		'\t'
 #define NL		'\n'
 #define CR		'\r'
 #define HASH		'#'

@@ -186,7 +186,7 @@
 //	The keypad address as actiually configured:
 //
 #define KEYPAD_ADDRESS		0x21
-
+#define KEYPAD_QUEUE_SIZE	8
 
 //
 //	20x4 LCD

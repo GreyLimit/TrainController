@@ -8,7 +8,7 @@
 
 #include "Configuration.h"
 #include "Environment.h"
-#include "Critical.h"
+#include "Signal.h"
 
 //
 //	Define the number of pin ADC readings which can be queued.
@@ -30,6 +30,10 @@
 class ADC_Manager {
 private:
 	//
+	//	Define how many ADC conversions we are prepared to backlog
+	//
+	static const byte	pending_queue = MAXIMUM_ADC_QUEUE;
+	//
 	//	The following structure is used by the ADC manager to
 	//	queue up multiple conversion requests so that the ADC
 	//	hardware can be 100% utilised.
@@ -49,7 +53,7 @@ private:
 		//	The flag to be set when the reading has been
 		//	collected.
 		//
-		bool		*flag;
+		Signal		*flag;
 		//
 		//	The address of the next record.
 		//
@@ -59,7 +63,8 @@ private:
 	//
 	//	Define the queue and free record list.
 	//
-	pending		*_active,
+	pending		_pending[ pending_queue ],
+			*_active,
 			**_tail,
 			*_free;
 
@@ -75,50 +80,13 @@ public:
 	//	the reading is complete the value obtained is
 	//	stored at result and the flag is set.
 	//
-	bool read( byte pin, bool *flag, word *result ) {
-		pending		*ptr;
-		Critical	code;
-		bool		initiate;
-
-		if(!( ptr = _free )) return( false );
-		initiate = ( _active == NIL( pending ));
-		_free = ptr->next;
-		ptr->save = result;
-		ptr->flag = flag;
-		ptr->next = NIL( pending );
-		*_tail = ptr;
-		_tail = &( ptr->next );
-		if( initiate ) MONITOR_ANALOGUE_PIN( _active->pin );
-	}
+	bool read( byte pin, Signal *flag, word *result );
 
 	//
 	//	This routine is called when an ADC reading has
 	//	completed.
 	//
-	void store( word value ) {
-		pending	*ptr;
-		
-		if(( ptr = _active )) {
-			//
-			//	Remove from the list.
-			//
-			if(!( _active = ptr->next )) _tail = &_active
-			//
-			//	Save data and set flag.
-			//
-			*( ptr->save ) = value;
-			*( ptr->flag ) = true;
-			//
-			//	Return to the free list.
-			//
-			ptr->next = _free;
-			_free = ptr;
-			//
-			//	Kick off the next ADC request?
-			//
-			if( _active ) MONITOR_ANALOGUE_PIN( _active->pin );
-		}
-	}
+	void store( word value );
 };
 
 

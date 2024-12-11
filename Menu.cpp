@@ -11,7 +11,7 @@
 //	All of the menus are defined here, statically.
 //
 
-const MENU_MEMORY	menus PROGMEM = {{
+const menu_memory menus PROGMEM = {{
 		{{
 			{{ 'C', 'a', 'b', ' ' },	ACTION_NEW_MOBILE	},
 			{{ 'A', 'c', 'c', ' ' },	ACTION_NEW_STATIC	},

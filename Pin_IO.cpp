@@ -139,7 +139,7 @@ static const byte translate_table[] PROGMEM = {
 	GB(PD,1),GB(PD,0),GB(PA,2),GB(PA,3),GB(PD,4),GB(PD,5)				// 16 -> 21
 
 #else
-#error "Pins_IO.cpp: Target platform not recognised."
+#error "Pin_IO.cpp: Target platform not recognised."
 #endif
 };
 
@@ -148,7 +148,7 @@ static const byte translate_table[] PROGMEM = {
 //	translation from a Platform Pin number
 //	to a GPIO instance and bit number.
 //
-bool Pins_IO::translate( byte pin, byte *instance, byte *bit_no ) {
+bool Pin_IO::translate( byte pin, byte *instance, byte *bit_no ) {
 	byte	x;
 	
 	if( pin >= sizeof( translate_table )) return( false );
@@ -165,7 +165,7 @@ bool Pins_IO::translate( byte pin, byte *instance, byte *bit_no ) {
 //	Produces an object which is not aligned with
 //	any device, and should not be used in this mode.
 //
-Pins_IO::Pins_IO( void ) {
+Pin_IO::Pin_IO( void ) {
 	_adrs = NULL;
 	_bit = 0;
 }
@@ -184,7 +184,7 @@ Pins_IO::Pins_IO( void ) {
 //	pull_up	True if the internal 3.3/5 volt pull up
 //		resister should be enabled.
 //
-Pins_IO::Pins_IO( byte dev, byte bit_num, bool input, bool pull_up ) {
+Pin_IO::Pin_IO( byte dev, byte bit_num, bool input, bool pull_up ) {
 	(void)configure( dev, bit_num, input, pull_up );
 }
 
@@ -202,7 +202,7 @@ Pins_IO::Pins_IO( byte dev, byte bit_num, bool input, bool pull_up ) {
 //	pull_up	True if the internal 3.3/5 volt pull up
 //		resister should be enabled.
 //
-Pins_IO::Pins_IO( byte pin, bool input, bool pull_up ) {
+Pin_IO::Pin_IO( byte pin, bool input, bool pull_up ) {
 	(void)configure( pin, input, pull_up );
 }
 
@@ -210,7 +210,7 @@ Pins_IO::Pins_IO( byte pin, bool input, bool pull_up ) {
 //	Set/Reset the target of the Pin Object using a
 //	device instance number and pin bit number.
 //
-bool Pins_IO::configure( byte instance, byte bit_no, bool input, bool pull_up ) {
+bool Pin_IO::configure( byte instance, byte bit_no, bool input, bool pull_up ) {
 	if(( _adrs = GPIO_address( instance ))) {
 		_bit = bit( bit_no );
 		if( input ) {
@@ -235,7 +235,7 @@ bool Pins_IO::configure( byte instance, byte bit_no, bool input, bool pull_up ) 
 //	Set/Reset the target of the Pin Object using a
 //	Platform pin number.
 //
-bool Pins_IO::configure( byte pin, bool input, bool pull_up ) {
+bool Pin_IO::configure( byte pin, bool input, bool pull_up ) {
 	byte	instance,
 		bit_no;
 	
@@ -246,7 +246,7 @@ bool Pins_IO::configure( byte pin, bool input, bool pull_up ) {
 //
 //	Determine if a pin has been configured.
 //
-bool Pins_IO::configured( void ) {
+bool Pin_IO::configured( void ) {
 	return( _adrs != NULL );
 }
 
@@ -254,27 +254,27 @@ bool Pins_IO::configured( void ) {
 //	The following functions provide the mechanism
 //	to alter, read or write the pin and its config.
 //
-void Pins_IO::input( void ) {
+void Pin_IO::input( void ) {
 	_adrs->input( _bit );
 }
 
-void Pins_IO::input_pullup( void ) {
+void Pin_IO::input_pullup( void ) {
 	_adrs->input_pullup( _bit );
 }
 
-void Pins_IO::output( void ) {
+void Pin_IO::output( void ) {
 	_adrs->output( _bit );
 }
 
-void Pins_IO::high( void ) {
+void Pin_IO::high( void ) {
 	_adrs->high( _bit );
 }
 
-void Pins_IO::low( void ) {
+void Pin_IO::low( void ) {
 	_adrs->low( _bit );
 }
 
-void Pins_IO::set( bool high ) {
+void Pin_IO::set( bool high ) {
 	if( high ) {
 		_adrs->high( _bit );
 	}
@@ -283,11 +283,11 @@ void Pins_IO::set( bool high ) {
 	}
 }
 
-void Pins_IO::toggle( void ) {
+void Pin_IO::toggle( void ) {
 	_adrs->toggle( _bit );
 }
 
-byte Pins_IO::read( void ) {
+byte Pin_IO::read( void ) {
 	return( _adrs->read( _bit ));
 }		
 

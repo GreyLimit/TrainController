@@ -1,4 +1,4 @@
-# Arduino Train Controller V0.3,5
+# Arduino Train Controller V0.3.5
 
 ## Summary
 

@@ -24,8 +24,9 @@
 //
 //	Configuration and stuff
 //
-#include "Configuration.h"
 #include "Environment.h"
+#include "Parameters.h"
+#include "Configuration.h"
 
 //
 //	The definitions following are broken into separate
@@ -34,6 +35,20 @@
 //	need to modify the overall API or compromise the
 //	performance of the final code.
 //
+
+//
+//	Declare an enumerated type that captures the IO roles that a
+//	given GPIO pin has been assigned.
+//
+enum Pin_Role : byte {
+	role_none		= 0,	// No roles assigned to pin
+	role_gpio		= 1,	// General IO pin
+	role_twi		= 2,	// TWI/I2C interface
+	role_spi		= 3,	// SPI interface
+	role_adc		= 4,	// Analogue to Digital conversion
+	role_usart		= 5,	// UART/USART interface
+	role_pwm		= 6	// PWM/Timer interface
+};
 
 //////////////////////////////////////////////////////////
 //							//
@@ -167,7 +182,7 @@ class GPIO_Registers {
 			_port &= ~b;
 		}
 		inline void toggle( byte b ) {
-			_pin |= b;
+			_pin = b;
 		}
 		inline byte read( byte b ) {
 			return( _pin & b );
@@ -353,7 +368,6 @@ class GPIO_Registers {
 #error "GPIO_Registers has no memory map definition for this architecture."
 #endif
 };
-
 
 //
 //	The following class provides a hardware independent

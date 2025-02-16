@@ -59,71 +59,19 @@ public:
 	//
 	//	Constructor
 	//
-	Driver( void ) {
-		_districts = 0;
-	}
+	Driver( void );
 
 	//
 	//	Add a new pin to the configuration of the driver where
 	//	the pin is referenced by the "platform" pin number.
 	//
-	bool add( byte *index, byte enable, byte direction ) {
-		driver_record	*d;
-		
-		//
-		//	Any space left?
-		//
-		if( _districts >= maximum_districts ) return( false );
-
-		//
-		//	Locate a new record (and save its index number).
-		//
-		d = &( _district[(( *index = _districts++ ))]);
-
-		//
-		//	Update record and initialise the pins.
-		//
-		d->enable.configure( enable, false );
-		d->enable.low();
-		d->direction.configure( direction, false );
-		d->direction.low();
-
-		//
-		//	Done!
-		//
-		return( true );
-	}
+	bool add( byte *index, byte enable, byte direction );
 	
 	//
 	//	Add a new pin to the configuration of the driver where
 	//	the pin is referenced by port number and bit within port.
 	//
-	bool add( byte *index, byte enable_dev, byte enable_bitno, byte direction_dev, byte direction_bitno ) {
-		driver_record	*d;
-		
-		//
-		//	Any space left?
-		//
-		if( _districts >= maximum_districts ) return( false );
-
-		//
-		//	Locate a new record (and save its index number).
-		//
-		d = &( _district[(( *index = _districts++ ))]);
-
-		//
-		//	Update record and initialise the pins.
-		//
-		d->enable.configure( enable_dev, enable_bitno, false );
-		d->enable.low();
-		d->direction.configure( direction_dev, direction_bitno, false );
-		d->direction.low();
-
-		//
-		//	Done.
-		//
-		return( true );
-	}
+	bool add( byte *index, byte enable_dev, byte enable_bitno, byte direction_dev, byte direction_bitno );
 
 	//
 	//	Now the DCC generator will use the following API calls.
@@ -132,42 +80,26 @@ public:
 	//
 	//	Turn on all or one district
 	//
-	void on( void ) {
-		for( byte i = 0; i < _districts; _district[ i++ ].enable.high());
-	}
-	void on( byte index ) {
-		if( index < _districts ) _district[ index ].enable.high();
-	}
+	void on( void );
+	void on( byte index );
 
 	//
 	//	Turn off all or one district
 	//
-	void off( void ) {
-		for( byte i = 0; i < _districts; _district[ i++ ].enable.low());
-	}
-	void off( byte index ) {
-		if( index < _districts ) _district[ index ].enable.low();
-	}
+	void off( void );
+	void off( byte index );
 
 	//
 	//	Toggle the output signal of all or a single district.
 	//
-	void toggle( void ) {
-		for( byte i = 0; i < _districts; _district[ i++ ].direction.toggle());
-	}
-	void toggle( byte index ) {
-		if( index < _districts ) _district[ index ].direction.toggle();
-	}
+	void toggle( void );
+	void toggle( byte index );
 
 	//
 	//	Generic power on/off call.
 	//
-	void power( bool on ) {
-		for( byte i = 0; i < _districts; _district[ i++ ].enable.set( on ));
-	}
-	void power( byte index, bool on ) {
-		if( index < _districts ) _district[ index ].enable.set( on );
-	}
+	void power( bool on );
+	void power( byte index, bool on );
 };
 
 //

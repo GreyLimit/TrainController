@@ -239,14 +239,13 @@ private:
 		//
 		//	These should be redundant, eventually.
 		//
-		mc_set_delay_40000us,	// Set delay countdown to 40000us
-		mc_set_delay_4200us,	// 4200us
-		mc_set_delay_1600us,	// 1600us
-		mc_set_delay_150us,	// 150us
-		mc_set_delay_41us,	// 41us
-		mc_set_delay_37us,	// 37us
-		mc_set_delay_10us,	// 10us
-		mc_delay_wait,		// Wait until the delay period has expired
+		mc_delay_40000us,	// Set delay countdown to 40000us
+		mc_delay_4200us,	// 4200us
+		mc_delay_1600us,	// 1600us
+		mc_delay_150us,		// 150us
+		mc_delay_41us,		// 41us
+		mc_delay_37us,		// 37us
+		mc_delay_10us		// 10us
 	};
 
 	//
@@ -360,26 +359,42 @@ public:
 	//	This routine called each time round loop to support going
 	//	LCD processes.
 	//
-	virtual void process( void );
+	virtual void process( byte handle );
 
 	//
 	//	Functional Routines
 	//	===================
 	//
 	//	These return true if the command/action was
-	//	successfully queued, false otherwise.
+	//	successfully queued, false otherwise.  The completion
+	//	of the command is signalled through the flag passed in.
 	//
-	bool backlight( bool on, Signal *flag = NIL( Signal ));
-	bool clear( Signal *flag = NIL( Signal ));
-	bool home( Signal *flag = NIL( Signal ));
-	bool leftToRight( bool l2r, Signal *flag = NIL( Signal ));
-	bool autoscroll( bool on, Signal *flag = NIL( Signal ));
-	bool display( bool on, Signal *flag = NIL( Signal ));
-	bool cursor( bool on, Signal *flag = NIL( Signal ));
-	bool blink( bool on, Signal *flag = NIL( Signal ));
-	bool position( byte row, byte col, Signal *flag = NIL( Signal ));
-	bool index( byte posn, Signal *flag = NIL( Signal ));
-	bool write( byte val, Signal *flag = NIL( Signal ));
+	bool backlight( bool on, Signal *flag );
+	bool clear( Signal *flag );
+	bool home( Signal *flag );
+	bool leftToRight( bool l2r, Signal *flag );
+	bool autoscroll( bool on, Signal *flag );
+	bool display( bool on, Signal *flag );
+	bool cursor( bool on, Signal *flag );
+	bool blink( bool on, Signal *flag );
+	bool position( byte row, byte col, Signal *flag );
+	bool index( byte posn, Signal *flag );
+	bool write( byte val, Signal *flag );
+	//
+	//	These return true if the command/action was
+	//	successfully completed, false otherwise.
+	//
+	void backlight( bool on );
+	void clear( void );
+	void home( void );
+	void leftToRight( bool l2r );
+	void autoscroll( bool on );
+	void display( bool on );
+	void cursor( bool on );
+	void blink( bool on );
+	void position( byte row, byte col );
+	void index( byte posn );
+	void write( byte val );
 };
 
 

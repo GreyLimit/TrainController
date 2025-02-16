@@ -473,6 +473,18 @@ class USART_IO : public Byte_Queue_API {
 		virtual byte available( void );
 
 		//
+		//	Return the number of bytes pending in the buffer.
+		//	For "looped back" or simple "internal" buffers
+		//	this will be the same value as the "available()"
+		//	bytes.
+		//
+		//	However, for devices that are presented as a buffer
+		//	(bi-directional devices) this will return the number
+		//	of data bytes still awaiting (pending) being sent.
+		//
+		virtual byte pending( void );
+
+		//
 		//	byte space( void )
 		//	------------------
 		//
@@ -502,6 +514,14 @@ class USART_IO : public Byte_Queue_API {
 		//	Returns true if queued, false otherwise.
 		//
 		virtual bool write( byte data );
+
+		//
+		//	Perform a "reset" of the underlying system.  This
+		//	is used only to recover from an unknown condition
+		//	with the expectation that upon return the queue
+		//	can be reliably used.
+		//
+		virtual void reset( void );
 
 		//
 		//	Return the address of the data ready flag.

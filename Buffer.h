@@ -14,6 +14,21 @@
 #include "Configuration.h"
 #include "Protocol.h"
 #include "Byte_Queue.h"
+#include "Trace.h"
+
+//
+//	Define a generic Buffer API that will allow the content
+//	of a buffer to be extracted from *any* form of Buffer
+//	instance (noting that "Buffer" is a template class
+//	allowing for different sizes of buffer).
+//
+class Buffer_API {
+public:
+	virtual char *buffer( void ) = 0;
+	virtual byte size( void ) = 0;
+	virtual void copy( char *to, byte len ) = 0;
+	virtual bool send( Byte_Queue_API *to ) = 0;
+};
 
 //
 //	Reply Construction routines.
@@ -29,7 +44,7 @@
 //	tight on the smaller MCUs).
 //
 template< byte SIZE >
-class Buffer {
+class Buffer : public Buffer_API {
 private:
 	//
 	//	Declare the size of the internal buffer
@@ -51,7 +66,7 @@ private:
 	char			_buffer[ buffer_size ];
 
 	//
-	//	Our pointers into the buffer we have been assigned.
+	//	Our pointers into our buffer.
 	//
 	char			*_ptr;
 	byte			_left;
@@ -155,6 +170,15 @@ private:
 		while( c ) *_ptr++ = '0' + r[ --c ];
 		return( true );
 	}
+
+	bool add_PROGMEM( const char *str ) {
+		char	c;
+
+		while(( c = progmem_read_byte_at( str++ ))) {
+			if( !add( c )) return( false );
+		}
+		return( true );
+	}
 	
 public:
 	Buffer( void ) {
@@ -162,31 +186,35 @@ public:
 		_left = buffer_size;
 	}
 
-	bool format( char code, word a1 ) {
+	bool format( char code, int a1 ) {
 		return( start( code ) && add( a1 ) && end());
 	}
 
-	bool format( char code, word a1, word a2 ) {
+	bool format( char code, int a1, int a2 ) {
 		return( start( code ) && add( a1 ) && add( SPACE ) && add( a2 ) && end());
 	}
 
-	bool format( char code, word a1, word a2, word a3 ) {
+	bool format( char code, int a1, int a2, int a3 ) {
 		return( start( code ) && add( a1 ) && add( SPACE ) && add( a2 ) && add( a3 ) && end());
 	}
 
-	char *buffer( void ) {
+	bool format( char code, int a1, int a2, const char *a3 ) {
+		return( start( code ) && add( a1 ) && add( SPACE ) && add( a2 ) && add_PROGMEM( a3 ) && end());
+	}
+
+	virtual char *buffer( void ) {
 		return( _buffer );
 	}
 
-	byte size( void ) {
+	virtual byte size( void ) {
 		return( buffer_size - _left );
 	}
 
-	void copy( char *to, byte len ) {
+	virtual void copy( char *to, byte len ) {
 		memcpy( to, _buffer, min( len, size()));
 	}
 
-	bool send( Byte_Queue_API *to ) {
+	virtual bool send( Byte_Queue_API *to ) {
 		return( to->print( _buffer, size()));
 	}
 };

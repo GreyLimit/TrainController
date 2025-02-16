@@ -1,5 +1,5 @@
 ///
-///	Constants.h	--	A configurable constants module
+///	Constants.h		A configurable constants module
 ///
 ///	Copyright (c) 2021 Jeff Penfold.  All right reserved.
 ///

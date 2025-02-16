@@ -21,7 +21,7 @@
 //
 //	Declare the class containing the HCI control systems
 //
-class HCI {
+class HCI : public Task_Entry {
 private:
 	//
 	//	We define here the human interpretation of DCC speeds
@@ -40,8 +40,8 @@ private:
 	static const word	maximum_speed = 126;
 	//
 	static inline byte read_speed( word state ) { return( state & 0x7F ); }
-	static inline bool read_direction( word state ) { return(( state & 0x80 ) == 0x00 ); }
-	static inline bool speed_dir_valid( word state ) { return(( state & 0x100 ) != 0x000 ); }
+	static inline bool read_direction( word state ) { return( BOOL( state & 0x80 )); }
+	static inline bool speed_dir_valid( word state ) { return( BOOL( state & 0x100 )); }
 	static inline word speed_dir_state( byte speed, bool dir ) { return( 0x100 |( dir? 0x80: 0x00 )|( speed & 0x7F )); }
 
 	//
@@ -49,15 +49,31 @@ private:
 	//	is easier than a mobile decoder speed as we only need to know
 	//	if the state is valid, and what the state is.
 	//
-	static inline bool accessory_valid( word state ) { return(( state & 0x20 ) != 0x00 ); }
-	static inline bool read_accessory( word state ) { return(( state & 0x01 ) != 0x00 ); }
+	static inline bool accessory_valid( word state ) { return( BOOL( state & 0x20 )); }
+	static inline bool read_accessory( word state ) { return( BOOL( state & 0x01 )); }
 	static inline word accessory_state( bool state ) { return( 0x20 |( state? 0x01: 0x00 )); }
+
+	//
+	//	Define the handles used (via the task manager) to
+	//	differentiate between the different events this
+	//	object needs to respond to.
+	//
+	static const byte 	rotary_handle = 1;
+	static const byte	keypad_handle = 2;
+	static const byte	display_handle = 3;
+
+	//
+	//	Define the associated flags used by the events.
+	//
+	Signal			_rotary_flag,
+				_keypad_flag,
+				_display_flag;
 	
 	//
 	//	These are the other components which form the HCI.
 	//
 	LCD		_lcd;
-	byte		_frame_buffer[ LCD_FRAME_BUFFER ];
+	byte		_display_line;
 	FrameBuffer	_display;
 	Rotary		_dial;
 	Keypad		_keypad;
@@ -126,6 +142,11 @@ public:
 	//	Called to process rotary actions.
 	//
 	void rotary_updater( void );
+
+	//
+	//	The task entry routine.
+	//
+	virtual void process( byte handle );
 };
 
 

@@ -20,6 +20,7 @@
 //
 //	Environment for this module
 //
+#include "Code_Assurance.h"
 #include "LCD.h"
 #include "Trace.h"
 #include "Critical.h"
@@ -27,6 +28,7 @@
 #include "Errors.h"
 #include "Task.h"
 #include "Clock.h"
+#include "Trace.h"
 
 
 //
@@ -42,8 +44,8 @@ static const LCD::mc_state LCD::mc_idle_program[] PROGMEM = {
 	mc_idle
 };
 static const LCD::mc_state LCD::mc_reset_program[] PROGMEM = {
-	mc_reset, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_40000us, mc_delay_wait,
-	mc_idle
+	mc_reset, mc_transmit_buffer, mc_wait_on_done, mc_delay_40000us,
+	mc_finish_up, mc_idle
 };
 
 //
@@ -52,18 +54,18 @@ static const LCD::mc_state LCD::mc_reset_program[] PROGMEM = {
 //	operating sequence.
 //
 static const LCD::mc_state LCD::mc_init_long_delay[] PROGMEM = {
-	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_4200us, mc_delay_wait,
+	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_4200us,
 	mc_finish_up, mc_idle
 };
 static const LCD::mc_state LCD::mc_init_medium_delay[] PROGMEM = {
-	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_150us, mc_delay_wait,
+	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_150us,
 	mc_finish_up, mc_idle
 };
 static const LCD::mc_state LCD::mc_init_short_delay[] PROGMEM = {
-	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
+	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
 	mc_finish_up, mc_idle
 };
 
@@ -74,59 +76,64 @@ static const LCD::mc_state LCD::mc_init_short_delay[] PROGMEM = {
 static const LCD::mc_state LCD::mc_send_inst[] PROGMEM = {
 #if _LCD_USE_READ_BUSY_READY_
 	mc_begin_wait,
-	mc_status_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_status_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
+	mc_status_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_status_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
 	mc_read_buffer, mc_wait_on_done, mc_store_high_data,
-	mc_status_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_status_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
+	mc_status_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_status_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
 	mc_read_buffer, mc_wait_on_done, mc_store_low_data,
 	mc_wait_loop,
-	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
-	mc_inst_low_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_inst_low_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
+	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
+	mc_inst_low_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_inst_low_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
 	mc_finish_up, mc_idle
 #else
-	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
-	mc_inst_low_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_inst_low_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_1600us, mc_delay_wait,
+	mc_inst_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_inst_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
+	mc_inst_low_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_inst_low_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_1600us,
 	mc_finish_up, mc_idle
 #endif
 };
 static const LCD::mc_state LCD::mc_send_data[] PROGMEM = {
 #if _LCD_USE_READ_BUSY_READY_
 	mc_begin_wait,
-	mc_status_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_status_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
+	mc_status_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_status_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
 	mc_read_buffer, mc_wait_on_done, mc_store_high_data,
-	mc_status_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_status_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
+	mc_status_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_status_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
 	mc_read_buffer, mc_wait_on_done, mc_store_low_data,
 	mc_wait_loop,
-	mc_data_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_data_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
-	mc_data_low_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_data_low_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
+	mc_data_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_data_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
+	mc_data_low_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_data_low_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
 	mc_finish_up, mc_idle
 #else
-	mc_data_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_data_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
-	mc_data_low_enable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_10us, mc_delay_wait,
-	mc_data_low_disable, mc_transmit_buffer, mc_wait_on_done, mc_set_delay_37us, mc_delay_wait,
+	mc_data_high_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_data_high_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
+	mc_data_low_enable, mc_transmit_buffer, mc_wait_on_done, mc_delay_10us,
+	mc_data_low_disable, mc_transmit_buffer, mc_wait_on_done, mc_delay_37us,
 	mc_finish_up, mc_idle
 #endif
 };
 
 
 //
-//	bool queue_transfer( const mc_state *program, byte value )
-//	-----------------------------------------------------
+//	bool queue_transfer( const mc_state *program, byte value, Signal *flag )
+//	------------------------------------------------------------------------
 //
 //	Routine used to add another action to the queue, return true
 //	if the action has been queued, false otherwise.
 //
 bool LCD::queue_transfer( const mc_state *program, byte value, Signal *flag ) {
+	
+	STACK_TRACE( "bool LCD::queue_transfer( const mc_state *program, byte value, Signal *flag )" );
+
+	ASSERT( program != NIL( const mc_state ));
+	ASSERT( flag != NIL( Signal ));
 	
 	if( _queue_len >= max_pending ) return( false );
 	
@@ -134,7 +141,7 @@ bool LCD::queue_transfer( const mc_state *program, byte value, Signal *flag ) {
 	_queue[ _queue_in ].program = program;
 	_queue[ _queue_in ].flag = flag;
 	
-	if( ++_queue_in >= max_pending ) _queue_in = 0;
+	if(( _queue_in += 1 ) >= max_pending ) _queue_in = 0;
 
 	//
 	//	Finally increase the number of pending records
@@ -160,8 +167,14 @@ bool LCD::queue_transfer( const mc_state *program, byte value, Signal *flag ) {
 //	This will block the execution of the firmware at this point.
 //
 void LCD::queue_transfer_wait( const LCD::mc_state *program, byte value ) {
-	Signal	wait;
 	
+	STACK_TRACE( "void LCD::queue_transfer_wait( const LCD::mc_state *program, byte value )" );
+	
+	Signal	wait;
+
+	TRACE_LCD( console.print( F( "LCD wait signal " )));
+	TRACE_LCD( console.println( wait.identity()));
+
 	while( !queue_transfer( program, value, &wait )) task_manager.pole_task();
 	while( !wait.acquire()) task_manager.pole_task();
 }
@@ -202,20 +215,29 @@ LCD::LCD( void ) {
 }
 
 void LCD::initialise( byte adrs, byte rows, byte cols ) {
+	
+	STACK_TRACE( "void LCD::initialise( byte adrs, byte rows, byte cols )" );
+
+	TRACE_LCD( console.print( F( "LCD flag " )));
+	TRACE_LCD( console.println( _flag.identity()));
+
 	//
 	//	Save the physical details of the display
 	//
 	_adrs = adrs;
 	_rows = rows;
 	_cols = cols;
+	
 	//
 	//	Attach this object to the task manager
 	//
-	task_manager.add_task( this, &_flag );
+	if( !task_manager.add_task( this, &_flag )) ABORT( TASK_MANAGER_QUEUE_FULL );
+	
 	//
 	//	Clear i2c adapter, then wait more than 40ms after powerOn.
 	//
 	queue_transfer_wait( mc_reset_program, 0b00000000 );
+	
 	//
 	//	See HD44780U datasheet "Initializing by Instruction" Figure 24 (4-Bit Interface)
 	//
@@ -262,10 +284,12 @@ void LCD::initialise( byte adrs, byte rows, byte cols ) {
 		//
 		queue_transfer_wait( mc_send_inst, 0b00101000 );	// Function Set + 4 bit mode + 2 lines + 5x8 font (As an 8 bit instruction)
 	}
+	
 	//
 	//	And pause..
 	//
 	event_timer.inline_delay( MSECS( 1000 ));
+	
 	//
 	//	Now some ordinary tidy up steps.
 	//
@@ -281,7 +305,10 @@ void LCD::initialise( byte adrs, byte rows, byte cols ) {
 //	This routine called each time round loop to support going
 //	LCD processes.
 //
-void LCD::process( void ) {
+void LCD::process( UNUSED( byte handle )) {
+	
+	STACK_TRACE( "void LCD::process( byte handle )" );
+	
 	//
 	//	Everything done in this routine is under the control
 	//	of the current LCD program.  This is, effectively,
@@ -289,7 +316,9 @@ void LCD::process( void ) {
 	//
 main_loop:
 	switch( progmem_read_byte_at( _fsm_instruction )) {
-		case mc_idle: {			// machine at idle
+		case mc_idle: {
+			TRACE_LCD( console.println( F( "LCD mc_idle" )));
+			
 			//
 			//	If we are here and there is something in the queue
 			//	we load up the necessary components and run the
@@ -317,12 +346,16 @@ main_loop:
 			//
 			break;
 		};
-		case mc_reset: {		// Resetting the device by sending
-			_fsm_buffer = 0;	// an empty byte.
+		case mc_reset: {
+			TRACE_LCD( console.println( F( "LCD mc_reset" )));
+			
+			_fsm_buffer = 0;
 			_fsm_instruction++;
 			goto main_loop;
 		}
-		case mc_inst_high_enable: {	// send high nybble with E=1 as inst
+		case mc_inst_high_enable: {
+			TRACE_LCD( console.println( F( "LCD mc_inst_high_enable" )));
+			
 			//
 			//	RS = 0	(Select IR)
 			//	R/W = 0 (Write)
@@ -332,7 +365,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_inst_high_disable: {	// send high nybble with E=0 as inst
+		case mc_inst_high_disable: {
+			TRACE_LCD( console.println( F( "LCD mc_inst_high_disable" )));
+			
 			//
 			//	RS = 0	(Select IR)
 			//	R/W = 0 (Write)
@@ -342,7 +377,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_inst_low_enable: {	// send low nybble with E=1 as inst
+		case mc_inst_low_enable: {
+			TRACE_LCD( console.println( F( "LCD mc_inst_low_enable" )));
+			
 			//
 			//	RS = 0	(Select IR)
 			//	R/W = 0 (Write)
@@ -352,7 +389,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_inst_low_disable: {	// send low nybble with E=0 as inst
+		case mc_inst_low_disable: {
+			TRACE_LCD( console.println( F( "LCD mc_inst_low_disable" )));
+			
 			//
 			//	RS = 0	(Select IR)
 			//	R/W = 0 (Write)
@@ -362,7 +401,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_data_high_enable: {	// send high nybble with E=1 as data
+		case mc_data_high_enable: {
+			TRACE_LCD( console.println( F( "LCD mc_data_high_enable" )));
+			
 			//
 			//	RS = 1	(Select DR)
 			//	R/W = 0 (Write)
@@ -372,7 +413,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_data_high_disable: {	// send high nybble with E=0 as data
+		case mc_data_high_disable: {
+			TRACE_LCD( console.println( F( "LCD mc_data_high_disable" )));
+			
 			//
 			//	RS = 1	(Select DR)
 			//	R/W = 0 (Write)
@@ -382,7 +425,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_data_low_enable: {	// send low nybble with E=1 as data
+		case mc_data_low_enable: {
+			TRACE_LCD( console.println( F( "LCD mc_data_low_enable" )));
+			
 			//
 			//	RS = 1	(Select DR)
 			//	R/W = 0 (Write)
@@ -392,7 +437,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_data_low_disable: {	// send low nybble with E=0 as data
+		case mc_data_low_disable: {
+			TRACE_LCD( console.println( F( "LCD mc_data_low_disable" )));
+			
 			//
 			//	RS = 1	(Select DR)
 			//	R/W = 0 (Write)
@@ -402,7 +449,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_status_enable: {	// send status request with E=1 as inst
+		case mc_status_enable: {
+			TRACE_LCD( console.println( F( "LCD mc_status_enable" )));
+			
 			//
 			//	RS = 0	(Select IR)
 			//	R/W = 1 (Read)
@@ -412,7 +461,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_status_disable: {	// send status request with E=0 as inst
+		case mc_status_disable: {
+			TRACE_LCD( console.println( F( "LCD mc_status_disable" )));
+			
 			//
 			//	RS = 0	(Select IR)
 			//	R/W = 1 (Read)
@@ -422,7 +473,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		};
-		case mc_read_buffer: {		// read the interface into the buffer
+		case mc_read_buffer: {
+			TRACE_LCD( console.println( F( "LCD mc_read_buffer" )));
+			
 			//
 			//	We read and read again until this returns true then
 			//	move to the next instruction
@@ -455,17 +508,23 @@ main_loop:
 			//
 			break;
 		}
-		case mc_store_high_data: {	// place buffer into data high bits
+		case mc_store_high_data: {
+			TRACE_LCD( console.println( F( "LCD mc_store_high_data" )));
+			
 			_fsm_data_byte = ( _fsm_buffer & 0xf0 )|( _fsm_data_byte & 0x0f );
 			_fsm_instruction++;
 			goto main_loop;
 		}
-		case mc_store_low_data: {	// place buffer into data high bits
+		case mc_store_low_data: {
+			TRACE_LCD( console.println( F( "LCD mc_store_low_data" )));
+			
 			_fsm_data_byte = (( _fsm_buffer & 0xf0 ) >> 4 )|( _fsm_data_byte & 0xf0 );
 			_fsm_instruction++;
 			goto main_loop;
 		}
-		case mc_transmit_buffer: {	// send the content of the buffer
+		case mc_transmit_buffer: {
+			TRACE_LCD( console.println( F( "LCD mc_transmit_buffer" )));
+			
 			//
 			//	We send and send again until this returns true then
 			//	move to the next instruction
@@ -498,7 +557,9 @@ main_loop:
 			//
 			break;
 		}
-		case mc_wait_on_done: {		// Wait for the TWI action to complete
+		case mc_wait_on_done: {
+			TRACE_LCD( console.println( F( "LCD mc_wait_on_done" )));
+			
 			//
 			//	Transmission completed
 			//
@@ -529,13 +590,13 @@ main_loop:
 				//
 				//	Did the "in flight" action have a signal?
 				//
-				if( _fsm_flag ) _fsm_flag->release();
+				_fsm_flag->release();
 				//
 				//	Unroll all the pending actions checking
 				//	the flag pointers.
 				//
 				while( _queue_len ) {
-					if(( _fsm_flag = _queue[ _queue_out ].flag )) _fsm_flag->release();
+					_queue[ _queue_out ].flag->release();
 					if(( _queue_out += 1 ) >= max_pending ) _queue_out = 0;
 					_queue_len--;
 				}
@@ -555,7 +616,9 @@ main_loop:
 			}
 			goto main_loop;
 		}
-		case mc_begin_wait: {		// Note the top of the wait loop
+		case mc_begin_wait: {
+			TRACE_LCD( console.println( F( "LCD mc_begin_wait" )));
+			
 			//
 			//	Just need to remember the instruction pointer
 			//	after this one (no need to re-run this code
@@ -564,7 +627,9 @@ main_loop:
 			_fsm_loop = ++_fsm_instruction;
 			goto main_loop;
 		}
-		case mc_wait_loop: {		// If not ready loop again
+		case mc_wait_loop: {
+			TRACE_LCD( console.println( F( "LCD mc_wait_loop" )));
+			
 			//
 			//	The Busy Flag is the top bit of the data recovered from
 			//	the LCD.
@@ -578,6 +643,8 @@ main_loop:
 			goto main_loop;
 		}
 		case mc_finish_up: {
+			TRACE_LCD( console.println( F( "LCD mc_finish_up" )));
+			
 			//
 			//	This is the final step in the execution of a command
 			//	and is, essentially, here to signal to the owner of
@@ -587,7 +654,9 @@ main_loop:
 			_fsm_instruction++;
 			goto main_loop;
 		}
-		case mc_set_delay_40000us: {	// Set delay countdown to 40000us
+		case mc_delay_40000us: {
+			TRACE_LCD( console.println( F( "LCD mc_delay_40000us" )));
+			
 			if( !event_timer.delay_event( MSECS( 40 ), &_flag, false )) {
 				//
 				//	Failing to schedule an actual timed delay, we log
@@ -600,7 +669,9 @@ main_loop:
 			_fsm_instruction++;
 			break;
 		}
-		case mc_set_delay_4200us: {	// 4200us
+		case mc_delay_4200us: {
+			TRACE_LCD( console.println( F( "LCD mc_delay_4200us" )));
+			
 			if( !event_timer.delay_event( USECS( 4200 ), &_flag, false )) {
 				//
 				//	Failing to schedule an actual timed delay, we log an error
@@ -613,7 +684,9 @@ main_loop:
 			_fsm_instruction++;
 			break;
 		}
-		case mc_set_delay_1600us: {	// 1600us
+		case mc_delay_1600us: {
+			TRACE_LCD( console.println( F( "LCD mc_delay_1600us" )));
+			
 			if( !event_timer.delay_event( USECS( 1600 ), &_flag, false )) {
 				//
 				//	Failing to schedule an actual timed delay, we log an error
@@ -626,7 +699,9 @@ main_loop:
 			_fsm_instruction++;
 			break;
 		}
-		case mc_set_delay_150us: {	// 150us
+		case mc_delay_150us: {
+			TRACE_LCD( console.println( F( "LCD mc_delay_150us" )));
+			
 			if( !event_timer.delay_event( USECS( 150 ), &_flag, false )) {
 				//
 				//	Failing to schedule an actual timed delay, we log an error
@@ -639,7 +714,9 @@ main_loop:
 			_fsm_instruction++;
 			break;
 		}
-		case mc_set_delay_41us: {	// 41us
+		case mc_delay_41us: {
+			TRACE_LCD( console.println( F( "LCD mc_delay_41us" )));
+			
 			if( !event_timer.delay_event( USECS( 41 ), &_flag, false )) {
 				//
 				//	Failing to schedule an actual timed delay, we log an error
@@ -652,7 +729,9 @@ main_loop:
 			_fsm_instruction++;
 			break;
 		}
-		case mc_set_delay_37us: {	// 37us
+		case mc_delay_37us: {
+			TRACE_LCD( console.println( F( "LCD mc_delay_37us" )));
+			
 			if( !event_timer.delay_event( USECS( 37 ), &_flag, false )) {
 				//
 				//	Failing to schedule an actual timed delay, we log an error
@@ -665,7 +744,9 @@ main_loop:
 			_fsm_instruction++;
 			break;
 		}
-		case mc_set_delay_10us: {	// 10us
+		case mc_delay_10us: {
+			TRACE_LCD( console.println( F( "LCD mc_delay_10us" )));
+			
 			if( !event_timer.delay_event( USECS( 10 ), &_flag, false )) {
 				//
 				//	Failing to schedule an actual timed delay, we log an error
@@ -678,11 +759,9 @@ main_loop:
 			_fsm_instruction++;
 			break;
 		}
-		case mc_delay_wait: {	// Wait until the delay period has expired
-			_fsm_instruction++;
-			goto main_loop;
-		}
 		default: {
+			TRACE_LCD( console.println( F( "LCD default" )));
+			
 			//
 			//	This should not happen, but if it does then
 			//	there is a real problem.  All I can do is
@@ -700,9 +779,15 @@ main_loop:
 //	===================
 //
 //	These return true if the command/action was
-//	successfully queued, false otherwise.
+//	successfully queued, false otherwise.  The completion
+//	of the command is signalled through the flag passed in.
 //
 bool LCD::backlight( bool on, Signal *flag ) {
+	
+	STACK_TRACE( "bool LCD::backlight( bool on, Signal *flag )" );
+
+	ASSERT( flag != NIL( Signal ));
+
 	//
 	//	The back light is explicitly controlled by
 	//	one of the pins on the LCDs primary hardware
@@ -712,31 +797,42 @@ bool LCD::backlight( bool on, Signal *flag ) {
 	//	setting (or resetting) this specific bit.
 	//
 	bitWrite( _back_light, LED_backlight, on );
+
+	TRACE_LCD( console.print( F( "LCD backlight " )));
+	TRACE_LCD( console.println_hex( _back_light ));
+	
 	//
 	//	The change in backlight status will be
 	//	implemented on any following command to
 	//	the LCD.  If a signal has been included
 	//	set it.
 	//
-	if( flag ) flag->release();
+	flag->release();
 	return( true );
 }
 
 bool LCD::clear( Signal *flag ) {
 
-	TRACE_LCD( console.write( 'C' ));
+	STACK_TRACE( "bool LCD::clear( Signal *flag )" );
+	
+	TRACE_LCD( console.println( F( "LCD clear" )));
 	
 	return( queue_transfer( mc_send_inst, clear_screen, flag ));
 }
 
 bool LCD::home( Signal *flag ) {
 
-	TRACE_LCD( console.write( 'H' ));
+	STACK_TRACE( "bool LCD::home( Signal *flag )" );
 	
-	return( queue_transfer( mc_send_inst, home_screen,flag ));
+	TRACE_LCD( console.println( F( "LCD Home" )));
+	
+	return( queue_transfer( mc_send_inst, home_screen, flag ));
 }
 
 bool LCD::leftToRight( bool l2r, Signal *flag ) {
+
+	STACK_TRACE( "bool LCD::leftToRight( bool l2r, Signal *flag )" );
+
 	//
 	//	Note that this facility does not apply consistently
 	//	to "wrapping" between lines.  If you write off the end
@@ -751,31 +847,47 @@ bool LCD::leftToRight( bool l2r, Signal *flag ) {
 }
 
 bool LCD::autoscroll( bool on, Signal *flag ) {
+
+	STACK_TRACE( "bool LCD::autoscroll( bool on, Signal *flag )" );
+	
 	bitWrite( _entry_state, auto_scroll, on );
 	return( queue_transfer( mc_send_inst, entry_state | _entry_state, flag ));
 }
 
 bool LCD::display( bool on, Signal *flag ) {
+
+	STACK_TRACE( "bool LCD::display( bool on, Signal *flag )" );
+
 	bitWrite( _display_state, display_on, on );
 	return( queue_transfer( mc_send_inst, display_state | _display_state, flag ));
 }
 
 bool LCD::cursor( bool on, Signal *flag ) {
+
+	STACK_TRACE( "bool LCD::cursor( bool on, Signal *flag )" );
+
 	bitWrite( _display_state, cursor_on, on );
 	return( queue_transfer( mc_send_inst, display_state | _display_state, flag ));
 }
 
 bool LCD::blink( bool on, Signal *flag ) {
+
+	STACK_TRACE( "bool LCD::blink( bool on, Signal *flag )" );
+
 	bitWrite( _display_state, blink_on, on );
 	return( queue_transfer( mc_send_inst, display_state | _display_state, flag ));
 }
 
 bool LCD::position( byte row, byte col, Signal *flag ) {
 
-	TRACE_LCD( console.println());
-	TRACE_LCD( console.write( 'P' ));
-	TRACE_LCD( console.print_hex( col ));
-	TRACE_LCD( console.print_hex( row ));
+	STACK_TRACE( "bool LCD::position( byte row, byte col, Signal *flag )" );
+	
+	TRACE_LCD( console.print( F( "LCD position " )));
+	TRACE_LCD( console.print( row ));
+	TRACE_LCD( console.print( COMMA ));
+	TRACE_LCD( console.print( col ));
+	TRACE_LCD( console.print( F( " flag " )));
+	TRACE_LCD( console.println( flag->identity()));
 
 	//
 	//	We will modify the column value to correctly
@@ -796,9 +908,12 @@ bool LCD::position( byte row, byte col, Signal *flag ) {
 
 bool LCD::index( byte posn, Signal *flag ) {
 
-	TRACE_LCD( console.println());
-	TRACE_LCD( console.write( 'I' ));
-	TRACE_LCD( console.print_hex( posn ));
+	STACK_TRACE( "bool LCD::index( byte posn, Signal *flag )" );
+	
+	TRACE_LCD( console.print( F( "LCD index " )));
+	TRACE_LCD( console.print( posn ));
+	TRACE_LCD( console.print( F( " flag " )));
+	TRACE_LCD( console.println( flag->identity()));
 
 	//
 	//	similar to the position() routine, but views
@@ -831,12 +946,193 @@ bool LCD::index( byte posn, Signal *flag ) {
 
 bool LCD::write( byte val, Signal *flag ) {
 
-	TRACE_LCD( console.write( 'W' ));
+	STACK_TRACE( "bool LCD::write( byte val, Signal *flag )" );
+	
+	TRACE_LCD( console.print( F( "LCD write " )));
 	TRACE_LCD( console.print_hex( val ));
 
 	return( queue_transfer( mc_send_data, val, flag ));
 }
 
+//
+//	These return true if the command/action was
+//	successfully completed, false otherwise.
+//
+void LCD::backlight( bool on ) {
+	
+	STACK_TRACE( "bool LCD::backlight( bool on )" );
+
+	//
+	//	The back light is explicitly controlled by
+	//	one of the pins on the LCDs primary hardware
+	//	interface.  The _back_light variable is
+	//	used as part of the mask when writing to
+	//	the LCD so the LCD is controlled simply by
+	//	setting (or resetting) this specific bit.
+	//
+	bitWrite( _back_light, LED_backlight, on );
+	
+	TRACE_LCD( console.print( F( "LCD backlight " )));
+	TRACE_LCD( console.println_hex( _back_light ));
+	
+	//
+	//	The change in backlight status will be
+	//	implemented on any following command to
+	//	the LCD.  If a signal has been included
+	//	set it.
+	//
+}
+
+void LCD::clear( void ) {
+
+	STACK_TRACE( "bool LCD::clear( void )" );
+	
+	TRACE_LCD( console.println( F( "LCD clear" )));
+
+	queue_transfer_wait( mc_send_inst, clear_screen );
+}
+
+void LCD::home( void ) {
+
+	STACK_TRACE( "bool LCD::home( void )" );
+	
+	TRACE_LCD( console.println( F( "LCD home" )));
+	
+	queue_transfer_wait( mc_send_inst, home_screen );
+}
+
+void LCD::leftToRight( bool l2r ) {
+
+	STACK_TRACE( "bool LCD::leftToRight( bool l2r )" );
+
+	//
+	//	Note that this facility does not apply consistently
+	//	to "wrapping" between lines.  If you write off the end
+	//	of line 0 it rolls into line 2.  Like wise rolling off
+	//	line 1 rolls into line 3.
+	//
+	//	This is caused entirely by the memory mapping between
+	//	the driver chip and the actual display.
+	//
+	bitWrite( _entry_state, left_right, l2r );
+	queue_transfer_wait( mc_send_inst, ( entry_state | _entry_state ));
+}
+
+void LCD::autoscroll( bool on ) {
+
+	STACK_TRACE( "bool LCD::autoscroll( bool on )" );
+	
+	bitWrite( _entry_state, auto_scroll, on );
+	queue_transfer_wait( mc_send_inst, ( entry_state | _entry_state ));
+}
+
+void LCD::display( bool on ) {
+
+	STACK_TRACE( "bool LCD::display( bool on )" );
+
+	bitWrite( _display_state, display_on, on );
+	queue_transfer_wait( mc_send_inst, ( display_state | _display_state ));
+}
+
+void LCD::cursor( bool on ) {
+
+	STACK_TRACE( "bool LCD::cursor( bool on )" );
+
+	bitWrite( _display_state, cursor_on, on );
+	queue_transfer_wait( mc_send_inst, ( display_state | _display_state ));
+}
+
+void LCD::blink( bool on ) {
+
+	STACK_TRACE( "bool LCD::blink( bool on )" );
+
+	bitWrite( _display_state, blink_on, on );
+	queue_transfer_wait( mc_send_inst, ( display_state | _display_state ));
+}
+
+void LCD::position( byte row, byte col ) {
+
+	STACK_TRACE( "bool LCD::position( byte row, byte col )" );
+	
+	TRACE_LCD( console.print( F( "LCD position " )));
+	TRACE_LCD( console.print( row ));
+	TRACE_LCD( console.print( COMMA ));
+	TRACE_LCD( console.println( col ));
+
+	//
+	//	We will modify the column value to correctly
+	//	reflect the memory mapped position required.
+	//
+	//	For ODD rows we add the fixed offset
+	//
+	if( row & 1 ) col += 0x40;
+	//
+	//	For the repeated rows add the total number of columns
+	//
+	if( row & 2 ) col += _cols;
+	//
+	//	Transmit command
+	//
+	queue_transfer_wait( mc_send_inst, ( set_position | col ));
+}
+
+void LCD::index( byte posn ) {
+
+	STACK_TRACE( "bool LCD::index( byte posn )" );
+	
+	TRACE_LCD( console.print( F( "LCD index " )));
+	TRACE_LCD( console.println_hex( posn ));
+
+	//
+	//	similar to the position() routine, but views
+	//	the buffer simply as a series of bytes starting
+	//	at the top left and finishing at the bottom.
+	//
+	//	This "ignores" the underlying memory mapping which
+	//	effectively shuffles the rows.
+	//
+	//	Line 0
+	//
+	if( posn < _cols ) {
+		queue_transfer_wait( mc_send_inst, ( set_position | posn ));
+		return;
+	}
+	//
+	//	Line 1
+	//
+	if(( posn -= _cols ) < _cols ) {
+		queue_transfer_wait( mc_send_inst, ( set_position |( 0x40 + posn )));
+		return;
+	}
+	//
+	//	Line 2
+	//
+	if(( posn -= _cols ) < _cols ) {
+		queue_transfer_wait( mc_send_inst, ( set_position |( _cols + posn )));
+		return;
+	}
+	//
+	//	Line 3
+	//
+	if(( posn -= _cols ) < _cols ) {
+		queue_transfer_wait( mc_send_inst, ( set_position |( 0x40 + _cols + posn )));
+		return;
+	}
+	//
+	//	Out of bounds, put it top left, position 0.
+	//
+	queue_transfer_wait( mc_send_inst, set_position );
+}
+
+void LCD::write( byte val ) {
+
+	STACK_TRACE( "bool LCD::write( byte val )" );
+	
+	TRACE_LCD( console.print( F( "LCD write " )));
+	TRACE_LCD( console.println_hex( val ));
+
+	queue_transfer_wait( mc_send_data, val );
+}
 
 //
 //	EOF

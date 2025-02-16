@@ -67,25 +67,10 @@ struct object_data {
 	//
 	//	The current state off the object.
 	//
-	//	For mobile decoders this is the speed direction.  However
-	//	the system needs to allow for the posibility of going
-	//	both forwards or backwards at speed zero.  Therefore
-	//	while ZERO means stationary, the following applies
+	//	The content of this is defined by the HCI code, and
+	//	is dependent on type of object being represented here.
 	//
-	//		+1	->	0 forwards
-	//		+2	->	1 forwards
-	//		+3	->	2 forwards, etc...
-	//
-	//	and
-	//		-1	->	0 backwards
-	//		-2	->	1 backwards
-	//		-3	->	2 backwards, etc...
-	//
-	//	For Accessories a similar mechanism is employed with
-	//	1 being "ON" and -1 being "OFF".  This permits 0 to
-	//	be used as "undefined".
-	//
-	sbyte		state;
+	word		state;
 };
 
 //

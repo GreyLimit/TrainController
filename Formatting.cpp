@@ -11,6 +11,7 @@
 #include "Configuration.h"
 #include "Formatting.h"
 #include "Code_Assurance.h"
+#include "Trace.h"
 
 //
 //	Numerical output formatting routines
@@ -25,6 +26,9 @@
 //	version unsigned 8 bit values.
 //
 bool backfill_int_to_text( char *buf, byte len, int v ) {
+
+	STACK_TRACE( "bool backfill_int_to_text( char *buf, byte len, int v )" );
+
 	bool	n;	// Negative flag.
 
 	ASSERT( buf != NULL );
@@ -98,6 +102,8 @@ bool backfill_int_to_text( char *buf, byte len, int v ) {
 //
 bool backfill_byte_to_text( char *buf, byte len, byte v ) {
 
+	STACK_TRACE( "bool backfill_byte_to_text( char *buf, byte len, byte v )" );
+
 	ASSERT( buf != NULL );
 	ASSERT( len > 0 );
 
@@ -124,6 +130,9 @@ bool backfill_byte_to_text( char *buf, byte len, byte v ) {
 //	character used or 0 on error.
 //
 byte byte_to_text( char *buf, byte len, byte v ) {
+
+	STACK_TRACE( "byte byte_to_text( char *buf, byte len, byte v )" );
+
 	byte	l;
 
 	ASSERT( buf != NULL );
@@ -146,6 +155,9 @@ byte byte_to_text( char *buf, byte len, byte v ) {
 //	character used or 0 on error.
 //
 byte word_to_text( char *buf, byte len, word v ) {
+
+	STACK_TRACE( "byte word_to_text( char *buf, byte len, word v )" );
+
 	byte	l;
 
 	ASSERT( buf != NULL );
@@ -162,10 +174,6 @@ byte word_to_text( char *buf, byte len, word v ) {
 	}
 	return(( v > 0 )? 0: l );
 }
-
-
-
-
 
 
 

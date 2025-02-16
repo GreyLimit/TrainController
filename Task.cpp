@@ -5,20 +5,42 @@
 //	Declare the task manager
 //
 
+#include "Code_Assurance.h"
+#include "Trace.h"
 #include "Task.h"
+
+#include "Console.h"
 
 //
 //	Constructor and Destructor.
 //
 TaskManager::TaskManager( void ) {
-	_head = NIL( task_record );
-	_tail = &_head;
-	_free = NIL( task_record );
-	for( byte i = 0; i < table_size; i++ ) {
-		_table[ i ].next = _free;
-		_free = &( _table[ i ]);
-	}
+	//
+	//	Just note we start at depth 0.
+	//
 	_depth = 0;
+	
+	//
+	//	Initialise the balance value.
+	//
+	_balance = balance;
+	
+	//
+	//	Start with idel empty.
+	//
+	_idle = 0;
+}
+
+//
+//	The "in sequence" initialisation routine.
+//
+void TaskManager::initialise( void ) {
+
+	STACK_TRACE( "void TaskManager::initialise( void )" );
+
+	//
+	//	For the moment this is empty!
+	//
 }
 
 //
@@ -26,7 +48,13 @@ TaskManager::TaskManager( void ) {
 //	if a single task can be executed before returning.
 //
 void TaskManager::pole_task( void ) {
-	task_record	*t;
+
+	STACK_TRACE( "void TaskManager::pole_task( void )" );
+	
+	TRACE_TASK( console.print( F( "TM depth " )));
+	TRACE_TASK( console.println( _depth ));
+	
+	ASSERT( Critical::normal_code());
 
 	//
 	//	Perform our "anti-recursion" depth trap.
@@ -37,44 +65,77 @@ void TaskManager::pole_task( void ) {
 	}
 
 	//
-	//	We can only do anything if there is something to do.
+	//	Note our new nesting depth.
 	//
-	//	It *is* possible for the queue to be empty if there
-	//	are a very small number of tasks that (unwittingly)
-	//	directly call this routine.
+	_depth++;
+	
 	//
-	if(( t = _head )) {
+	//	Run a queue from one of either the fast or slow
+	//	queue.  We take some guidance from the state of
+	//	the balance value in choosing which queue to
+	//	pick from.
+	//
+	if( _balance ) {
 		//
-		//	Note our new nesting depth.
+		//	While balance is non-zero we choose to
+		//	start with the fast queue.
 		//
-		_depth++;
-		
-		//
-		//	Found a task so unlink from the task list
-		//	then test the trigger.
-		//
-		if(!( _head = t->next )) _tail = &_head;
-		
-		//
-		//	Test the signal - call if resource available.
-		//	The called process is responsible for claiming
-		//	the resource (or resources as appropriate).
-		//
-		if( t->trigger->acquire()) t->call->process();
-		
-		//
-		//	Put on the back of the task list to await
-		//	its turn again.
-		//
-		t->next = NIL( task_record );
-		*_tail = t;
-		_tail = &( t->next );
-
-		//
-		//	Restore nesting depth to previous value.
-		//
-		_depth--;
+		if( Signal::run_task( true )) {
+			//
+			//	Reduce the balance as a result of
+			//	running the fast process.
+			//
+			_balance--;
+		}
+		else {
+			//
+			//	Try the slow queue instead.
+			//
+			if( Signal::run_task( false )) {
+				//
+				//	Successfully running a slow
+				//	taks resets the balance.
+				//
+				_balance = balance;
+			}
+			else {
+				//
+				//	Chalk up another time of idleness.
+				//
+				_idle += 1;
+			}
+		}
 	}
+	else {
+		//
+		//	The balance has to be swung over towards the
+		//	slow queue (as _balance is zero).
+		//
+		if( Signal::run_task( false )) {
+			//
+			//	Successfully running a slow
+			//	task resets the balance.
+			//
+			_balance = balance;
+		}
+		else {
+			//
+			//	Otherwise just try the fast queue.
+			//
+			if( !Signal::run_task( true )) {
+				//
+				//	Chalk up another time of idleness.
+				//
+				_idle += 1;
+			}
+		}
+	}
+
+	//
+	//	Restore nesting depth to previous value.
+	//
+	_depth--;
+
 }
 
 //
@@ -82,46 +143,54 @@ void TaskManager::pole_task( void ) {
 //	main loop continuously.
 //
 void TaskManager::run_tasks( void ) {
+
+	STACK_TRACE( "void TaskManager::run_tasks( void )" );
+	
+	TRACE_TASK( console.println( F( "TM run tasks" )));
+
+	ASSERT( _depth == 0 );
+
 	//
-	//	We do not allow this routine to run if the depth
-	//	is anything other than zero.  This would be a
-	//	coding mistake.
+	//	All we do is call the pole_task routine forever.
 	//
-	if( _depth ) return;
+	while( true ) pole_task();
 	
 	//
-	//	Scan for task to call based on the value of
-	//	their trigger flag.
-	//
-	while( _head ) pole_task();
-	//
-	//	The run_tasks() function only returns when all
-	//	the tasks have gone - which should never happen!
+	//	This function never exits.
 	//
 }
 
 //
 //	This is the access point where tasks are added to the system.
 //
-bool TaskManager::add_task( Task_Entry *call, Signal *trigger ) {
-	task_record	*t;
+bool TaskManager::add_task( Task_Entry *call, Signal *trigger, byte handle ) {
+
+	STACK_TRACE( "bool TaskManager::add_task( Task_Entry *call, Signal *trigger, byte handle )" );
+
+	ASSERT( trigger != NIL( Signal ));
+
+	TRACE_TASK( console.print( F( "TM add flag " )));
+	TRACE_TASK( console.print( trigger->identity()));
+	TRACE_TASK( console.print( F( " handle " )));
+	TRACE_TASK( console.print( handle ));
+	TRACE_TASK( console.print( F( " from " )));
+	TRACE_TASK( STACK_CALLER( &console ));
 
 	//
-	//	Find an empty task record, fail if there are none
-	//	left.
+	//	Update the Signal with its task data.
 	//
-	if(!( t = _free )) return( false );
+	return( trigger->associate( call, handle ));
+}
+
+//
+//	Report (and reset) the idel counter for statistics purposes.
+//
+word TaskManager::idle_count( void ) {
+	word	was;
 	
-	//
-	//	Fill in record and append to the task list.
-	//
-	_free = t->next;
-	t->trigger = trigger;
-	t->call = call;
-	t->next = NIL( task_record );
-	*_tail = t;
-	_tail = &( t->next );
-	return( true );
+	was = _idle;
+	_idle = 0;
+	return( was );
 }
 
 

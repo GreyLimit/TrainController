@@ -29,6 +29,7 @@
 //
 #include "Configuration.h"
 #include "Trace.h"
+
 //
 //	Bring in our constant interface definition.
 //
@@ -113,6 +114,9 @@ static const ConstantValue constant_value[ CONSTANTS ] PROGMEM = {
 //	for either setting or checking the values in the structure.
 //
 static word checksum_consts( void ) {
+	
+	STACK_TRACE( "static word checksum_consts( void )" );
+	
 	word	s;
 
 	s = 0xffff;
@@ -135,6 +139,9 @@ static word checksum_consts( void ) {
 //	Re-write the constants back to the EEPROM.
 //
 void record_constants( void ) {
+	
+	STACK_TRACE( "void record_constants( void )" );
+	
 	constant.var.check.sum = checksum_consts();
 	EEPROM.put( 0, constant );
 }
@@ -143,6 +150,9 @@ void record_constants( void ) {
 //	RESET all Constants to default values.
 //
 void reset_constants( void ) {
+	
+	STACK_TRACE( "void reset_constants( void )" );
+	
 	//
 	//	Resetting the entire constants area to zero before
 	//	initialising  the "variable" constants from EEPROM.
@@ -182,6 +192,9 @@ void reset_constants( void ) {
 //	values.
 //
 void initialise_constants( void ) {
+	
+	STACK_TRACE( "void initialise_constants( void )" );
+	
 	//
 	//	Read in any saved constant values..
 	//
@@ -206,6 +219,9 @@ void initialise_constants( void ) {
 //	The name will be in PROGMEM.
 //
 int find_constant( int index, char **name, byte **adrs_b, word **adrs_w ) {
+	
+	STACK_TRACE( "int find_constant( int index, char **name, byte **adrs_b, word **adrs_w )" );
+	
 	if(( index < 0 )||( index >= CONSTANTS )) return( ERROR );
 	*name = (char *)progmem_read_address( constant_value[ index ].name );
 	*adrs_b = (byte *)progmem_read_address( constant_value[ index ].loc_b );

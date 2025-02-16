@@ -34,13 +34,16 @@
 #define TASK_MAXIMUM_DEPTH	3
 #endif
 
+
 //
-//	Define TASK_TABLE_SIZE if not already defined.  The default
-//	values are hardly "special" and can be really wrong.
+//	Declare a value for the "balance" between the fast and slow
+//	task queues.
 //
-#ifndef TASK_TABLE_SIZE
-#define TASK_TABLE_SIZE		SELECT_SML(4,8,16)
+#ifndef TASK_BALANCE
+#define TASK_BALANCE		4
 #endif
+
+
 
 //
 //	Define the task manager class where the argument passed in is
@@ -49,28 +52,15 @@
 class TaskManager {
 private:
 	//
-	//	Declare the maximum nesting depth and table_size.
+	//	Define what we consider the maximum nesting depth for a task.
 	//
-	static const byte	maximum_depth = TASK_MAXIMUM_DEPTH;
-	static const byte	table_size = TASK_TABLE_SIZE;
+	static const byte maximum_depth = TASK_MAXIMUM_DEPTH;
 	
 	//
-	//	Define a task entry and the task table.
+	//	Declare the "balance" allowed between the fast and slow queues.
 	//
-	struct task_record {
-		Signal		*trigger;
-		Task_Entry	*call;
-		task_record	*next;
-	};
-	//
-	//	Define our table space and the pointers we will use
-	//	to control and manage the task list.
-	//
-	task_record	_table[ table_size ],
-			*_head,
-			**_tail,
-			*_free;
-
+	static const byte balance	= TASK_BALANCE;
+	
 	//
 	//	Define a "depth indicator"; a counter which tracks
 	//	how many times the object has been called in a "nested"
@@ -79,12 +69,30 @@ private:
 	//	causing the firmware to fail in a unpredictable way.
 	//
 	byte		_depth;
+	
+	//
+	//	Counter used to ensure that the fast queue does not
+	//	flood the system and prevent slow queue events from
+	//	getting any time.
+	//
+	byte		_balance;
+	
+	//
+	//	Count the number of times that the task manager attempts
+	//	to do *something* but finds nothing to do.
+	//
+	word		_idle;
 
 public:
 	//
 	//	Constructor and Destructor.
 	//
 	TaskManager( void );
+
+	//
+	//	The "in sequence" initialisation routine.
+	//
+	void initialise( void );
 
 	//
 	//	This is a task polling routine and is called to see
@@ -101,7 +109,18 @@ public:
 	//
 	//	This is the access point where tasks are added to the system.
 	//
-	bool add_task( Task_Entry *call, Signal *trigger );
+	//	Here we syntactically allow the handle value to be ignored
+	//	when an object calls add_task, forcing the handle to be
+	//	non-zero as this is a hard requirement of the Signal class
+	//	(zero being used to flag a Signal not accessed by the Task
+	//	system).
+	//
+	bool add_task( Task_Entry *call, Signal *trigger, byte handle = 1 );
+	
+	//
+	//	Report (and reset) the idel counter for statistics purposes.
+	//
+	word idle_count( void );
 };
 
 //

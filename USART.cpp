@@ -8,6 +8,11 @@
 #include <Arduino.h>
 
 //
+//	We will not trace the stack in this module.
+//
+#define DISABLE_STACK_TRACE
+
+//
 //	The configuration of the firmware.
 //
 #include "Configuration.h"
@@ -22,6 +27,7 @@
 #include "Critical.h"
 #include "Code_Assurance.h"
 #include "USART.h"
+#include "Stats.h"
 
 //
 //	Specify the constructor to provide the details
@@ -200,8 +206,14 @@ static const byte usart_devices = 1;
 
 static USART_IO *usart0_vector;
 
-ISR( USART_RX_vect ) { if( usart0_vector ) usart0_vector->input_ready(); }
-ISR( USART_UDRE_vect ) { if( usart0_vector ) usart0_vector->output_ready(); }
+ISR( USART_RX_vect ) {
+	COUNT_INTERRUPT;
+	if( usart0_vector ) usart0_vector->input_ready();
+}
+ISR( USART_UDRE_vect ) {
+	COUNT_INTERRUPT;
+	if( usart0_vector ) usart0_vector->output_ready();
+}
 
 //
 //	Declare the only USART the Uno/Nano has.
@@ -245,14 +257,38 @@ static USART_IO *usart1_vector;
 static USART_IO *usart2_vector;
 static USART_IO *usart3_vector;
 
-ISR( USART0_RX_vect ) { if( usart0_vector ) usart0_vector->input_ready(); }
-ISR( USART0_UDRE_vect ) { if( usart0_vector ) usart0_vector->output_ready(); }
-ISR( USART1_RX_vect ) { if( usart1_vector ) usart1_vector->input_ready(); }
-ISR( USART1_UDRE_vect ) { if( usart1_vector ) usart1_vector->output_ready(); }
-ISR( USART2_RX_vect ) { if( usart2_vector ) usart2_vector->input_ready(); }
-ISR( USART2_UDRE_vect ) { if( usart2_vector ) usart2_vector->output_ready(); }
-ISR( USART3_RX_vect ) { if( usart3_vector ) usart3_vector->input_ready(); }
-ISR( USART3_UDRE_vect ) { if( usart3_vector ) usart3_vector->output_ready(); }
+ISR( USART0_RX_vect ) {
+	COUNT_INTERRUPT;
+	if( usart0_vector ) usart0_vector->input_ready();
+}
+ISR( USART0_UDRE_vect ) {
+	COUNT_INTERRUPT;
+	if( usart0_vector ) usart0_vector->output_ready();
+}
+ISR( USART1_RX_vect ) {
+	COUNT_INTERRUPT;
+	if( usart1_vector ) usart1_vector->input_ready();
+}
+ISR( USART1_UDRE_vect ) {
+	COUNT_INTERRUPT;
+	if( usart1_vector ) usart1_vector->output_ready();
+}
+ISR( USART2_RX_vect ) {
+	COUNT_INTERRUPT;
+	if( usart2_vector ) usart2_vector->input_ready();
+}
+ISR( USART2_UDRE_vect ) {
+	COUNT_INTERRUPT;
+	if( usart2_vector ) usart2_vector->output_ready();
+}
+ISR( USART3_RX_vect ) {
+	COUNT_INTERRUPT;
+	if( usart3_vector ) usart3_vector->input_ready();
+}
+ISR( USART3_UDRE_vect ) {
+	COUNT_INTERRUPT;
+	if( usart3_vector ) usart3_vector->output_ready();
+}
 
 //
 //	Declare the Mega2560 USARTs.
@@ -383,6 +419,20 @@ byte USART_IO::available( void ) {
 }
 
 //
+//	Return the number of bytes pending in the buffer.
+//	For "looped back" or simple "internal" buffers
+//	this will be the same value as the "available()"
+//	bytes.
+//
+//	However, for devices that are presented as a buffer
+//	(bi-directional devices) this will return the number
+//	of data bytes still awaiting (pending) being sent.
+//
+byte USART_IO::pending( void ) {
+	return( _output->available());
+}
+
+//
 //	byte space( void )
 //	------------------
 //
@@ -416,16 +466,6 @@ byte USART_IO::read( void ) {
 //	Returns true if queued, false otherwise.
 //
 bool USART_IO::write( byte data ) {
-	
-#ifdef SYNCHRONOUS_BUFFER
-	//
-	//	If we are to provide synchronous buffering (ie
-	//	not lose any data) then we need to wait until
-	//	there is at one byte space available.
-	//
-	while( _output->space() < 1 );
-#endif
-
 	//
 	//	Add to the output queue..
 	//
@@ -446,6 +486,28 @@ bool USART_IO::write( byte data ) {
 	}
 	return( false );
 }
+
+//
+//	Perform a "reset" of the underlying system.  This
+//	is used only to recover from an unknown condition
+//	with the expectation that upon return the queue
+//	can be reliably used.
+//
+void USART_IO::reset( void ) {
+	Critical code;
+	
+	//
+	//	Lets reset all of the interrupts then clear out
+	//	the input and output buffers to leave the device
+	//	in its "initial" condition.
+	//
+	_dev->dre_irq( false );
+	_async = false;
+	_input->reset();
+	_output->reset();
+}
+
+
 
 //
 //	Interrupts

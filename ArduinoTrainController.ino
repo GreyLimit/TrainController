@@ -1,8 +1,8 @@
 ///
 ///	ArduinoTrainController: A DCC Model Railway Controller.
 ///
-/// 	Firmware for an Arduino Uno R3 and Motor shield (with other
-///	components) to create a simple and free standing "Train
+/// 	Firmware for an Arduino Mega2560 and Motor shield (with other
+///	components) to create a consolidated free standing "Train
 ///	Controller" to be as simple as possible.
 ///
 ///	Copyright (C) 2020, Jeff Penfold, jeff.penfold@googlemail.com
@@ -22,11 +22,147 @@
 ///
 
 //
+//	Arduino Train Controller V0.3.5
+//	-------------------------------
+//	
+//	February 2025
+//
+//	Introduce options for counting interrupts per second and tracking
+//	the DCC "interrupt to ISR() call" delay.
+//
+//	Implement a software IRQ chrono-synchronisation mechanism in the
+//	DCC generator code which uses the value of the DCC Timer Counter
+//	(when the ISR is fianlly called) and an "in ISR" "busy loop" to
+//	ensure (mostly) that the key time critical action takes place
+//	in a time reliable manner.
+//
+//	The above has sucessfully determined and controlled the erractic
+//	DCC signal and shown that far too much CPU time is spent inside
+//	"Critical" code sections.  To resolve this all ISR reliant code
+//	is being migrated (where not truely time critical) to using a
+//	Signal structure to indicate that the ISR has been called, then
+//	the task manager to call the code outside a critical context.
+//
+//	This version of the firmware is now stable and executes correctly
+//	with good DCC timing operating real trains successfully.
+//
+//	Arduino Train Controller V0.3.4
+//	-------------------------------
+//	
+//	February 2025
+//
+//	Redefine the use of the 8 bit timers from producing regular
+//	interrupts at fixed times to producing specific timed delays
+//	to suite the requirements of the moment.
+//
+//	Impacted modules are the Clock and DCC modules: the users of the
+//	two 8 bit timers.
+//	
+//
+//	Arduino Train Controller V0.3.3
+//	-------------------------------
+//	
+//	January 2025
+//	
+//	Extension includes low level SPI driver (compiles, not tested).
+//	However the following items are objectives for this 0.3.3
+//	version:
+//
+//	* A "pin database" mechanism to enable a consistency check to be
+//	made that pins allocated for a specific role are free to be
+//	allocated in that way when required.  This to be an extension of
+//	the Pin_IO module, and will require a small extension to the
+//	Pin_IO API.
+//	
+//	* A modification to *all* the objects to step away from
+//	statically allocating tables for various roles to a system where
+//	tables are allocated "on request" using a simply heap based
+//	memory allocation system.
+//
+//	These changes should make the future porting of this code to
+//	another platform less error prone, especially where other
+//	platforms have the ability for a single given device (e.g. a
+//	USART) to be presented at different locations on the MCUs pins.
+//
+
+//
+//	Arduino Train Controller V0.3.2
+//	-------------------------------
+//	
+//	January 2025
+//	
+//	Extended 0.3.1s scheduling modifications to provide fast and slow
+//	schedule queues.  Whereas 0.3.1 had only a single queue which
+//	released signals appended themselves to (so removing the whole
+//	task manager queue system) - this version uses two queues: fast
+//	and slow.  If a Signal is released from within an ISR (or simply
+//	when interrupts are disabled) the Signal is placed into the fast
+//	queue to expedite processing of the event that the signal indicates.
+//	If the Signal was released during main line code execution (ie
+//	not in an ISR) then it is placed into the slow queue.
+//	
+//	When the task system is asked to find another process routine to
+//	call it will always pick from the fast queue if there are any
+//	signals ready before picking off the the slow queue.  Through
+//	this mechanism it is hoped that activities which are connected
+//	with physical devices (typically serviced via an ISR) are
+//	executed at a rate as close to that possible by the hardware,
+//	wasting less time (leaving less dead time between actions).
+//	Software based activities will operate at a slower rate but
+//	are mostly tied into the HCI and therefore are subject to human
+//	perception which should not notice the difference.
+//	
+//	Testing shows that the "weight" of fast events is so heavy that
+//	the slow queue never sees any time.  Therefore the scheduler now
+//	has a balancing system which ensure that, after a set number of
+//	fast events a slow event must be selected.  This seems (so far)
+//	to result in working firmware with a more snappy feeling.  The
+//	value of the balance still needs tuning (downwards in all
+//	probability).
+
+//
+//	Arduino Train Controller V0.3.1
+//	-------------------------------
+//	
+//	January 2025
+//	
+//	Updating the minor version number as the Task Manager and Signal
+//	handling module need to operate more cooperatively.  A little
+//	extra complexity in this area will create a more responsive and
+//	efficient task management system which should lead to faster
+//	firmware execution without any significant update the client
+//	module.
+//	
+//	This effectively removed the functionality of the task manager
+//	from its own module and inserted it into the Signal module.  The
+//	task manager now, effectively, only provides an interface into
+//	the Signal API.
+//	
+//	The Signal module now maintains a list of Signals which are
+//	released (at least once), and so there is no "searching" for a
+//	signal that is ready - there is always one ready at the head of
+//	the list. 
+//
+
+//
+//	Arduino Train Controller V0.3.0
+//	-------------------------------
+//
+//	January 2025
+//
+//	This version, while not (yet) fully functional is now a full
+//	re-write of the firmware which became the frozen version 0.2.0.
+//
+//	To avoid confusion between the two very different pieces of
+//	software this has now been renumbered to version 0.3.0 (ahead
+//	of it actually working).
+//
+
+
+//
 //	Arduino Train Controller V0.2.3
 //	-------------------------------
 //
-#define VERSION_NUMBER "0.2.3"
-
 //
 //	This version, really an extension of v0.2.2, sees the
 //	following modifications:
@@ -49,7 +185,7 @@
 //	resembling "real time" software towards something more structured
 //	and portable.
 //
-//	This version is wholly different from the previous versions
+//	This version is entirely different from the previous versions
 //	containing systems for managing time in both "computer" and
 //	"human" scales, a system for the causing "tasks" to be called
 //	when and external (to that task) event raises a suitable flag.
@@ -471,6 +607,7 @@
 #include "USART.h"
 #include "TWI.h"
 #include "LCD.h"
+#include "SPI.h"
 #include "FrameBuffer.h"
 #include "Layout.h"
 #include "Keypad.h"
@@ -491,28 +628,9 @@
 #include "Signal.h"
 #include "Banner.h"
 #include "Task.h"
-
-//
-//	Serial Host Connectivity
-//	========================
-//
-
-//
-//	Define the Speed and buffer size used when accessing the
-//	serial port.
-//
-//	Example baud rates:
-//
-//		9600 14400 19200 38400 57600 115200
-//
-//	The new USART module uses specific constant values for
-//	the various supported baud rates.  These are all preceded
-//	with a 'B'.
-//
-#ifndef SERIAL_BAUD_RATE
-#define SERIAL_BAUD_RATE	B38400
-#endif
-
+#include "Trace.h"
+#include "ADC_Manager.h"
+#include "Memory_Heap.h"
 
 //
 //	System SETUP all starts here.
@@ -521,23 +639,55 @@
 
 void setup( void ) {
 	//
-	//	Task 1:	Get the console interface live.
+	//	Load the "constant" values from EEPROM, or reset
+	//	if the content of EEPROM is invalid.
 	//
-	initialise_console( SERIAL_BAUD_RATE );
+	initialise_constants();
+	
+	//
+	//	Start the console interface and initialise the
+	//	error system.
+	//
+	//	When debugging the baud rate is over ridden to the
+	//	maximum speed available to try and reduce the impact
+	//	of debugging messages being displayed.
+	//
+	console.initialise( 0, DEBUGGING_OPTION( B115200, SERIAL_BAUD_RATE ));
+	errors.initialise( &console );
 
 	//
-	//	Task 2:	Announce what firmware this is to the console.
+	//	Announce what firmware this is to the console.
 	//
 	serial_banner( &console );
 
 	//
-	//	Task 3: Initialise the elements of the firmware.
+	//	Kick off the "real time" stack display (if enabled).
 	//
-	initialise_constants();
+	STACK_DISPLAY( false );
+
+	//
+	//	Initialise the key system sub-systems that everything
+	//	else will rely upon..
+	//
+	adc_manager.initialise();
+	task_manager.initialise();
+	event_timer.initialise();
+	time_of_day.initialise();
+	twi.initialise();
+	
+	//
+	//	Initialise the elements of the firmware.
+	//
 	districts.initialise();
 	dcc_generator.initialise();
 	hci_control.initialise();
 	protocol.initialise();
+	stats.initialise();
+
+	//
+	//	Announce firmware startup completed.
+	//
+	console.println( F( "Firmware startup completed." ));
 }
 
 
@@ -545,8 +695,11 @@ void setup( void ) {
 //	Finally, the main event loop which is al about running the tasks.
 //
 void loop( void ) {
+	
+	STACK_TRACE( "void loop( void )" );
+	
 	//
-	//	Task 4:	Just do it!
+	//	Just do it!
 	//
 	task_manager.run_tasks();
 }

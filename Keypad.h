@@ -143,12 +143,11 @@ private:
 	//	the TWI attached IO port.
 	//
 	enum scan_status : byte {
+		build_scancode,
 		send_scancode,
-		resend_scancode,
+		write_complete,
 		read_scancode,
-		reread_scancode,
-		scan_completed,
-		scan_processing
+		read_complete
 	}				_scan_status;
 
 	//
@@ -197,7 +196,7 @@ public:
 	//	This is called only when the TWI system has set this objects
 	//	flag to true.
 	//
-	virtual void process( void );
+	virtual void process( byte handle );
 };
 
 #endif

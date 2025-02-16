@@ -81,7 +81,7 @@ public:
 	//
 	//	Scan the rotary controller
 	//
-	virtual void process( void );
+	virtual void process( byte handle );
 	
 	//
 	//	Report a movement in the control.

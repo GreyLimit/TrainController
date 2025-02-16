@@ -43,10 +43,9 @@
 #define LAYOUT_SCAN_DELAY		10
 
 //
-//	Define MIRROR_LAYOUT if the results percieved results are
-//	flipped and rotated relative to the real keybopard.  This
-//	means the parallel interface to the scanning pins is in the
-//	reverse order.
+//	Define MIRROR_LAYOUT if the percieved results are flipped and
+//	rotated relative to the real keybopard.  This means the parallel
+//	interface to the scanning pins is in the reverse order.
 //
 //#define MIRROR_LAYOUT			1
 

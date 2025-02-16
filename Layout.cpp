@@ -15,6 +15,9 @@
 //	Our definitions
 //
 #include "Environment.h"
+#include "Configuration.h"
+#include "Parameters.h"
+
 #include "Layout.h"
 
 //
@@ -28,7 +31,7 @@
 //
 const byte keypad_mapping[ LAYOUT_KEYS ] PROGMEM = {
 
-#if defined( MIRROR_LAYOUT )
+#if defined( MIRROR_KEYPAD )
 	'D',	'C',	'B',	'A',
 	'#',	'9',	'6',	'3',
 	'0',	'8',	'5',	'2',

@@ -92,15 +92,10 @@ private:
 
 public:
 	//
-	//	Constructor
+	//	Constructor and initialise routine.
 	//
 	TOD( void );
-
-	//
-	//	Call to initialise the TOD system within the Clock and
-	//	Task sub-system.
-	//
-	void start( void );
+	void initialise( void );
 
 	//
 	//	Provide access to the TOD data.
@@ -120,7 +115,7 @@ public:
 	//	The TASK entry point, called each time the flag is
 	//	set true by the clock system.
 	//
-	virtual void process( void );
+	virtual void process( byte handle );
 
 	//
 	//	A human scale inline delay routine.

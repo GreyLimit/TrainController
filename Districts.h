@@ -39,7 +39,7 @@ public:
 	//	That being said, this is also limited by the number of H-Bridge
 	//	driver devices which can be attached to the MCU.  With the
 	//	standard "Arduino Motor Driver Shield" This is actually a
-	//	much lower number; 2.
+	//	much lower number: 2.
 	//
 	static const byte	districts = 2;
 	
@@ -88,7 +88,7 @@ public:
 	//
 	//	Set the power on for the districts "in zone".
 	//
-	void power( byte zone );
+	bool power( byte zone );
 
 	//
 	//	Return current load average (0-100) for indicated district

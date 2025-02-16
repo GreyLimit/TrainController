@@ -6,8 +6,10 @@
 #ifndef _AVR_MANAGER_H_
 #define _AVR_MANAGER_H_
 
-#include "Configuration.h"
 #include "Environment.h"
+#include "Parameters.h"
+#include "Configuration.h"
+#include "Task_Entry.h"
 #include "Signal.h"
 
 //
@@ -19,15 +21,9 @@
 
 
 //
-//	Macro to set the input pin the ADC will continuously read until
-//	called to read another pin.
-//
-#define MONITOR_ANALOGUE_PIN(p)		ADMUX=bit(REFS0)|((p)&0x07);ADCSRA|=bit(ADSC)|bit(ADIE)
-
-//
 //	The AVR Analogue to Digital Conversion management class.
 //
-class ADC_Manager {
+class ADC_Manager : public Task_Entry {
 private:
 	//
 	//	Define how many ADC conversions we are prepared to backlog
@@ -67,13 +63,32 @@ private:
 			*_active,
 			**_tail,
 			*_free;
+			
+	//
+	//	The signal used to hand off between the ISR and
+	//	the processing code, and the variable that holds
+	//	the reading value at the time of the ISR.
+	//
+	Signal		_irq;
+	word		_reading;
 
+	//
+	//	This is the routine which initiates a single analogue
+	//	conversion on the hardware.  This uses none of the
+	//	internal data structures of this class.
+	//
+	void start_conversion( byte pin );
 
 public:
 	//
 	//	Constructor
 	//
 	ADC_Manager( void );
+
+	//
+	//	Provide the hardware initialisation routine.
+	//
+	void initialise( void );
 
 	//
 	//	Request that a pin has its voltage read.  When
@@ -83,10 +98,14 @@ public:
 	bool read( byte pin, Signal *flag, word *result );
 
 	//
-	//	This routine is called when an ADC reading has
-	//	completed.
+	//	The entry point from the task manager.
 	//
-	void store( word value );
+	virtual void process( byte handle );
+	
+	//
+	//	The routine called by the ISR.
+	//
+	void irq( word reading );
 };
 
 

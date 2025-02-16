@@ -25,8 +25,9 @@
 #include "TWI.h"
 #include "Clock.h"
 #include "Code_Assurance.h"
-#include "Critical.h"
 #include "Task.h"
+#include "Trace.h"
+#include "Stats.h"
 
 //
 //	The following data structures capture a simplified view of the
@@ -74,12 +75,12 @@
 static const TWI::machine_state TWI::mode_quick_read[] PROGMEM = {
 	state_start, state_start_complete,
 	state_adrs_read, state_adrs_ack,
-	state_stop, state_finish_action
+	state_stop
 };
 static const TWI::machine_state TWI::mode_quick_write[] PROGMEM = {
 	state_start, state_start_complete,
 	state_adrs_write, state_adrs_ack,
-	state_stop, state_finish_action
+	state_stop
 };
 
 //
@@ -98,7 +99,7 @@ static const TWI::machine_state TWI::mode_send_data[] PROGMEM = {
 	state_start, state_start_complete,
 	state_adrs_write, state_adrs_ack,
 	state_send_byte, state_send_ack_loop,
-	state_stop, state_finish_action
+	state_stop
 };
 //
 //	The (6.5.3) Receive Byte is the only command which can directly
@@ -114,7 +115,7 @@ static const TWI::machine_state TWI::mode_receive_byte[] PROGMEM = {
 	state_start, state_start_complete,
 	state_adrs_read, state_adrs_ack,
 	state_recv_ready, state_recv_byte_loop,
-	state_stop, state_finish_action
+	state_stop
 };
 //
 //	All of the remaining commands (6.5.4 Write Byte/Word, 6.5.5
@@ -136,7 +137,7 @@ static const TWI::machine_state TWI::mode_data_exchange[] PROGMEM = {
 	state_restart, state_start_complete,
 	state_adrs_read, state_adrs_ack,
 	state_recv_ready, state_recv_byte_loop,
-	state_stop, state_finish_action
+	state_stop
 };
 
 //
@@ -148,7 +149,7 @@ static const TWI::machine_state TWI::mode_data_exchange[] PROGMEM = {
 //	needs to completed with subsequent tidy up.
 //
 static const TWI::machine_state TWI::abort_transaction[] PROGMEM = {
-	state_stop, state_finish_action
+	state_stop
 };
 
 
@@ -271,6 +272,9 @@ static const TWI::bitrate TWI::bitrates[] PROGMEM = {
 //	hardware to regain control of the system.
 //
 void TWI::reset_hardware( void ) {
+
+	STACK_TRACE( "void TWI::reset_hardware( void )" );
+	
 	byte	twcr;
 	
 	//
@@ -308,6 +312,9 @@ void TWI::reset_hardware( void ) {
 //	a new one.
 //
 void TWI::next_action( void ) {
+
+	STACK_TRACE( "void TWI::next_action( void )" );
+
 	//
 	//	Are we replacing a now finished job?
 	//
@@ -315,10 +322,19 @@ void TWI::next_action( void ) {
 		//
 		//	Tell creator action has completed.
 		//
+
+		TRACE_TWI( console.print( F( "TWI release flag " )));
+		TRACE_TWI( console.println( _active->flag->identity()));
+		
 		_active->flag->release();
+		
 		//
-		//	Then return to queue.
+		//	Forget the action we have completed.
 		//
+
+		ASSERT( _queue_len > 0 );
+		ASSERT( _active == &( _queue[ _queue_out ]));
+		
 		_queue_len -= 1;
 		if(( _queue_out += 1 ) >= maximum_queue ) _queue_out = 0;
 	}
@@ -330,6 +346,20 @@ void TWI::next_action( void ) {
 		//	Yes.
 		//
 		_active = &( _queue[ _queue_out ]);
+
+		//
+		//	Kick off this action.
+		//
+		//	To do this we fake getting an "initial" interrupt
+		//	so that the state machine performs the first
+		//	hardware start action.
+		//
+		
+		ASSERT( _irq.value() == 0 );
+		
+		_irq.release( true );
+
+		TRACE_TWI( console.println( F( "TWI queue started" )));
 	}
 	else {
 		//
@@ -372,21 +402,34 @@ void TWI::next_action( void ) {
 //	size queue which has been filled with pending requests.
 //
 bool TWI::queue_transaction( const TWI::machine_state *action, byte adrs, byte *buffer, byte send, byte recv, Signal *flag, TWI::error_code *result ) {
+
+	STACK_TRACE( "bool TWI::queue_transaction( const TWI::machine_state *action, byte adrs, byte *buffer, byte send, byte recv, Signal *flag, TWI::error_code *result )" );
+
 	transaction	*ptr;
 
 	ASSERT( flag != NIL( Signal ));
 	ASSERT( result != NIL( error_code ));
 
+	TRACE_TWI( console.print( F( "TWI flag " )));
+	TRACE_TWI( console.println( flag->identity()));
+
 	//
 	//	Is there space for a new request?
 	//
-	if( _queue_len >= maximum_queue ) return( false );
+	if( _queue_len >= maximum_queue ) {
+
+		TRACE_TWI( console.println( F( "TWI queue full" )));
+		
+		return( false );
+	}
+	
 	//
 	//	Locate the next available slot and adjust queue
 	//	appropriately.
 	//
 	ptr = &( _queue[ _queue_in++ ]);
 	if( _queue_in >= maximum_queue ) _queue_in = 0;
+	
 	//
 	//	"ptr" is the address of our queue record, so we can now
 	//	fill in this record with the supplied details.
@@ -399,15 +442,39 @@ bool TWI::queue_transaction( const TWI::machine_state *action, byte adrs, byte *
 	ptr->recv = recv;
 	ptr->flag = flag;
 	ptr->result = result;
+	
 	//
 	//	Last action; increase the queue length and (if this is
 	//	the only item in the queue) release the flag to begin
 	//	the asynchronous processing.
 	//
-	if(( _queue_len += 1 ) == 1 ) _flag.release();
+	if(( _queue_len += 1 ) == 1 ) {
+		TRACE_TWI( console.println( F( "TWI start queue" )));
+
+		ASSERT( _active == NIL( transaction ));
+
+		_active = ptr;
+
+		ASSERT( _active == &( _queue[ _queue_out ])); 
+
+		//
+		//	We kick off the transaction by faking an interrupt
+		//	and getting the state machine to perform the
+		//	initial start action.
+		//
+		ASSERT( _irq.value() == 0 );
+		
+		_irq.release( true );
+
+		TRACE_TWI( console.println( F( "TWI queue started" )));
+	}
+	
 	//
 	//	Good to go!
 	//
+
+	TRACE_TWI( console.println( F( "TWI transaction queued" )));
+		
 	return( true );
 }
 
@@ -427,6 +494,9 @@ bool TWI::queue_transaction( const TWI::machine_state *action, byte adrs, byte *
 //	render any use of the TWI hardware pretty much impossible.
 //
 void TWI::set_frequency( byte freq ) {
+
+	STACK_TRACE( "void TWI::set_frequency( byte freq )" );
+
 	const bitrate	*look;
 	byte		found,
 			twbr,
@@ -453,6 +523,9 @@ void TWI::set_frequency( byte freq ) {
 //	clock speed at (or below) the value passed in.
 //
 byte TWI::best_frequency( byte freq ) {
+
+	STACK_TRACE( "byte TWI::best_frequency( byte freq )" );
+
 	const bitrate	*look;
 	byte		found;
 
@@ -477,6 +550,9 @@ byte TWI::best_frequency( byte freq ) {
 //	reflects a speed of 10Kbps
 //
 byte TWI::lowest_frequency( void ) {
+
+	STACK_TRACE( "byte TWI::lowest_frequency( void )" );
+
 	const bitrate	*look;
 	byte		found,
 			last;
@@ -506,6 +582,20 @@ TWI::TWI( void ) {
 	//	Initially there is no active exchange.
 	//
 	_active = NIL( transaction );
+}
+
+//
+//	Call this routine to make things begin.
+//
+void TWI::initialise( void ) {
+
+	STACK_TRACE( "void TWI::initialise( void )" );
+
+	//
+	//	Attach ourselves to the task manager so that
+	//	we process the interrupts asynchronously.
+	//
+	if( !task_manager.add_task( this, &_irq, irq_process )) ABORT( TASK_MANAGER_QUEUE_FULL );
 
 	//
 	//	Disable slave configuration
@@ -525,26 +615,27 @@ TWI::TWI( void ) {
 	set_frequency( frequency );
 
 	//
-	//	Attach ourselves to the task manager so that
-	//	we process the interrupts asynchronously.
-	//
-	task_manager.add_task( this, &_flag );
-
-	//
 	//	Enable TWI module and TWI interrupt.
 	//
 	TWCR = bit( TWIE ) | bit( TWEN );
 }
+
 
 //
 //	The (6.5.1) Quick Commands
 //	--------------------------
 //
 bool TWI::quick_read( byte adrs, Signal *flag, TWI::error_code *result ) {
+
+	STACK_TRACE( "bool TWI::quick_read( byte adrs, Signal *flag, TWI::error_code *result )" );
+
 	return( queue_transaction( mode_quick_read, adrs, NULL, 0, 0, flag, result ));
 }
 
 bool TWI::quick_write( byte adrs, Signal *flag, error_code *result ) {
+
+	STACK_TRACE( "bool TWI::quick_write( byte adrs, Signal *flag, error_code *result )" );
+
 	return( queue_transaction( mode_quick_write, adrs, NULL, 0, 0, flag, result ));
 }
 
@@ -558,6 +649,9 @@ bool TWI::quick_write( byte adrs, Signal *flag, error_code *result ) {
 //	(6.5.12) Write 64 protocol
 //
 bool TWI::send_data( byte adrs, byte *buffer, byte send, Signal *flag, error_code *result ) {
+
+	STACK_TRACE( "bool TWI::send_data( byte adrs, byte *buffer, byte send, Signal *flag, error_code *result )" );
+
 	return( queue_transaction( mode_send_data, adrs, buffer, send, 0, flag, result ));
 }
 
@@ -566,6 +660,9 @@ bool TWI::send_data( byte adrs, byte *buffer, byte send, Signal *flag, error_cod
 //	------------------------
 //
 bool TWI::receive_byte( byte adrs, byte *buffer, Signal *flag, error_code *result ) {
+
+	STACK_TRACE( "bool TWI::receive_byte( byte adrs, byte *buffer, Signal *flag, error_code *result )" );
+
 	return( queue_transaction( mode_receive_byte, adrs, buffer, 0, 1, flag, result ));
 }
 
@@ -581,31 +678,58 @@ bool TWI::receive_byte( byte adrs, byte *buffer, Signal *flag, error_code *resul
 //	(6.5.13) Read 64 protocol
 //
 bool TWI::exchange( byte adrs, byte *buffer, byte send, byte recv, Signal *flag, error_code *result ) {
+
+	STACK_TRACE( "bool TWI::exchange( byte adrs, byte *buffer, byte send, byte recv, Signal *flag, error_code *result )" );
+
 	return( queue_transaction( mode_data_exchange, adrs, buffer, send, recv, flag, result ));
 }
 
 
 //
-//	void process( void )
-//	--------------------------
+//	void process( byte handle )
+//	---------------------------
 //
 //	Using the TWI state supplied drive the transaction record forward.
 //	When the routine returns something will have been done.
 //
-void TWI::process( void ) {
-	
-	ASSERT( _active != NIL( transaction ));
+void TWI::process( UNUSED( byte handle )) {
+
+	STACK_TRACE( "void TWI::process( byte handle )" );
+
+	TRACE_TWI( console.print( F( "TWI twsr = " )));
+	TRACE_TWI( console.println_hex( _twsr ));
+
+	//
+	//	Handle strange cases where the TWI hardware emits a
+	//	state where we are not processing an action.
+	//
+	if( _active == NIL( transaction )) {
+		TRACE_TWI( console.println( F( "TWI _active is NIL" )));
+
+		errors.log_error( TWI_STATE_CHANGE, _twsr );
+		return;
+	}
 	
 	//
 	//	The purpose of this routine is to handle the new state
 	//	by moving on the master transaction machine forward.
 	//
-machine_loop:
-	switch((machine_state)progmem_read_byte_at( _active->action )) {
+loop:	switch((machine_state)progmem_read_byte_at( _active->action )) {
 		case state_start: {
+			TRACE_TWI( console.println( F( "TWI state_start" )));
+
 			//
 			//	Generate the start condition and move the
 			//	action pointer forward to the next step.
+			//
+			//	Starting the transmission (though calling start())
+			//	will cause the TWI interrupt routine to handle
+			//	all the asynchronous interactions with the TWI
+			//	hardware without any "main line" code execution.
+			//
+			//	Transfer back to the "main line" code takes place
+			//	at the end of the transmission when the stop()
+			//	command is reached.
 			//
 			_active->next = 0;	// New index into the buffer
 			_active->action++;
@@ -613,6 +737,8 @@ machine_loop:
 			break;
 		}
 		case state_restart: {
+			TRACE_TWI( console.println( F( "TWI state_restart" )));
+
 			//
 			//	Generate a restart condition and move the
 			//	action pointer forward to the next step.
@@ -623,14 +749,18 @@ machine_loop:
 			break;
 		}
 		case state_start_complete: {
+			TRACE_TWI( console.println( F( "TWI state_start_complete" )));
+
 			//
-			//	We are waiting for the start (or restart) to complete successfully.
+			//	We have waited for the start (or restart) to complete successfully.
 			//	If it has completed then move to the next step in the machine.
 			//      If not then redirect machine to the abort transaction code.
 			//
 			switch( _twsr ) {
 				case TW_START:
 				case TW_REP_START: {
+					TRACE_TWI( console.println( F( "TWI start complete" )));
+					
 					//
 					//	Move to next step in the machine.
 					//
@@ -638,6 +768,8 @@ machine_loop:
 					break;
 				}
 				default: {
+					TRACE_TWI( console.println( F( "TWI start failed" )));
+					
 					//
 					//	Not a state we are anticipating, abort transaction
 					//
@@ -650,18 +782,12 @@ machine_loop:
 			//	We have not "done" anything so we go back to the start of the
 			//	routine and read the next step in the machine.
 			//
-			goto machine_loop;
-		}
-		case state_stop: {
-			//
-			//	Generate a stop condition and move the
-			//	action pointer forward to the next step.
-			//
-			stop();
-			_active->action++;
-			break;
+			goto loop;
 		}
 		case state_adrs_read: {
+			TRACE_TWI( console.print( F( "TWI state_adrs_read " )));
+			TRACE_TWI( console.println_hex( _active->target ));
+
 			//
 			//	We now send out the slave address from
 			//	which we want to read data.
@@ -675,6 +801,9 @@ machine_loop:
 			break;
 		}
 		case state_adrs_write: {
+			TRACE_TWI( console.print( F( "TWI state_adrs_write " )));
+			TRACE_TWI( console.println_hex( _active->target ));
+
 			//
 			//	We now send out the slave address with
 			//	WRITE signified.
@@ -684,6 +813,8 @@ machine_loop:
 			break;
 		}
 		case state_adrs_ack: {
+			TRACE_TWI( console.println( F( "TWI state_adrs_ack" )));
+
 			//
 			//	We are waiting for the address byte to
 			//	complete, then we check the status to
@@ -721,9 +852,12 @@ machine_loop:
 					break;
 				}
 			}
-			goto machine_loop;
+			goto loop;
 		}
 		case state_send_byte: {
+			TRACE_TWI( console.print( F( "TWI state_send_byte " )));
+			TRACE_TWI( console.println_hex( _active->buffer[ _active->next ]));
+
 			//
 			//	We have to send a byte to the slave
 			//
@@ -732,6 +866,8 @@ machine_loop:
 			break;
 		}
 		case state_send_ack_loop: {
+			TRACE_TWI( console.println( F( "TWI state_send_ack_loop" )));
+
 			//
 			//	Has the data been received?  The ack
 			//	will tell us.
@@ -768,9 +904,11 @@ machine_loop:
 					break;
 				}
 			}
-			goto machine_loop;
+			goto loop;
 		}
 		case state_recv_ready: {
+			TRACE_TWI( console.println( F( "TWI state_recv_ready" )));
+
 			//
 			//	Here we let the system know that we are
 			//	ready to receive another byte from the
@@ -782,14 +920,20 @@ machine_loop:
 			break;
 		}
 		case state_recv_byte_loop: {
+			TRACE_TWI( console.print( F( "TWI state_recv_byte_loop " )));
+
+			byte	data = read_byte();
+
+			TRACE_TWI( console.println_hex( data ));
+
 			//
 			//	Save that byte of data!
 			//
 			if( _active->next < _active->recv ) {
-				_active->buffer[ _active->next++ ] = read_byte();
+				_active->buffer[ _active->next++ ] = data;
 			}
 			else {
-				(void)read_byte();
+				errors.log_error( TWI_READ_DATA_OVERFLOW, _active->next );
 			}
 			//
 			//	Now choose what to do.
@@ -824,46 +968,57 @@ machine_loop:
 					break;
 				}
 			}
-			goto machine_loop;
+			goto loop;
 		}
-		case state_finish_action: {
+		case state_stop: {
+			TRACE_TWI( console.println( F( "TWI state_stop" )));
+
 			//
-			//	Finish off the transaction and start
-			//	another if one is queued.
+			//	Generate a stop condition and move the
+			//	action pointer forward to the next step.
 			//
+			stop();
 			next_action();
-			goto machine_loop;
+			break;
 		}
 		default: {
+			TRACE_TWI( console.println( F( "TWI default" )));
+
 			//
 			//	Everything that this module does should be
 			//	handled before the default case.  This is
 			//	and error!
 			//
-			ABORT();
+			ABORT( PROGRAMMER_ERROR_ABORT );
+			
 			//
 			//	In the event that there has been coding
 			//	error we could try recovery options...
 			//
 			_active->action = abort_transaction;
 			*( _active->result ) = error_transaction;
-			goto machine_loop;
+			goto loop;
 		}
 	}
 }
 
 //
-//	void process_event( void )
-//	--------------------------
+//	The routine called by the ISR to indicate an interrupt
+//	has been received.
 //
-//	This routine is called by the ISR to alert the driver
-//	that a change in the TWI hardware state has taken
-//	place.
-//
-void TWI::process_event( void ) {
-	_twsr = TWSR & 0xf8;
-	_flag.release();
+void TWI::irq( byte twsr ) {
+	//
+	//	1	Save the status register for later
+	//
+	//	2	Disable interrupts for now
+	//
+	//	3	Signal the event so the main line code can handle it.
+	//
+	_twsr = status( twsr );
+	disable();
+	_irq.release( true );
 }
+
 
 
 //
@@ -883,7 +1038,8 @@ TWI twi;
 //
 //
 ISR( TWI_vect ) {
-	twi.process_event();
+	COUNT_INTERRUPT;
+	twi.irq( TWSR );
 }
 
 

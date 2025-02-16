@@ -7,9 +7,15 @@
 
 
 #include "Districts.h"
+#include "Code_Assurance.h"
+#include "Trace.h"
+
+#ifdef DEBUGGING_ENABLED
+#include "Console.h"
+#endif
 
 //
-//	Current configured for a basic Arduino Motor Shield
+//	Currently configured for a basic Arduino Motor Shield
 //
 //	A and B drivers available, with 4 pins allocated to each.
 //
@@ -40,21 +46,23 @@
 #define SHIELD_DRIVER_A_BRAKE		9
 #define SHIELD_DRIVER_A_LOAD		A0
 #define SHIELD_DRIVER_A_ANALOGUE	0
+#define SHIELD_DRIVER_A_ZONE		1
 
 #define SHIELD_DRIVER_B_DIRECTION	13
 #define SHIELD_DRIVER_B_ENABLE		11
 #define SHIELD_DRIVER_B_BRAKE		8
 #define SHIELD_DRIVER_B_LOAD		A1
 #define SHIELD_DRIVER_B_ANALOGUE	1
+#define SHIELD_DRIVER_B_ZONE		1
 
 
 const Districts::district_data Districts::_district_data[ Districts::districts ] PROGMEM = {
 	//
-	//	enable			direction			adc_pin			adc_test			brake
-	//	------			---------			-------			--------			-----
+	//	enable			direction			adc_pin			adc_test			brake			Zone
+	//	------			---------			-------			--------			-----			----
 	//
-	{	SHIELD_DRIVER_A_ENABLE,	SHIELD_DRIVER_A_DIRECTION,	SHIELD_DRIVER_A_LOAD,	SHIELD_DRIVER_A_ANALOGUE,	SHIELD_DRIVER_A_BRAKE,	1	},
-	{	SHIELD_DRIVER_B_ENABLE,	SHIELD_DRIVER_B_DIRECTION,	SHIELD_DRIVER_B_LOAD,	SHIELD_DRIVER_B_ANALOGUE,	SHIELD_DRIVER_B_BRAKE,	1	}
+	{	SHIELD_DRIVER_A_ENABLE,	SHIELD_DRIVER_A_DIRECTION,	SHIELD_DRIVER_A_LOAD,	SHIELD_DRIVER_A_ANALOGUE,	SHIELD_DRIVER_A_BRAKE,	SHIELD_DRIVER_A_ZONE	},
+	{	SHIELD_DRIVER_B_ENABLE,	SHIELD_DRIVER_B_DIRECTION,	SHIELD_DRIVER_B_LOAD,	SHIELD_DRIVER_B_ANALOGUE,	SHIELD_DRIVER_B_BRAKE,	SHIELD_DRIVER_B_ZONE	}
 };
 
 //
@@ -68,6 +76,9 @@ Districts::Districts( void ) {
 //	Initialise the districts and set them into action.
 //
 void Districts::initialise( void ) {
+	
+	STACK_TRACE( "void Districts::initialise( void )" );
+	
 	//
 	//	Set up the districts according to the built in
 	//	table.
@@ -80,12 +91,18 @@ void Districts::initialise( void ) {
 		
 		brake.configure( progmem_read_byte( d->brake ), false );
 		brake.low();
+
+		//
+		//	Ensure zone 0 is never used (zone 0 is all off).
+		//
+		ASSERT( progmem_read_byte( d->zone ) > 0 );
 		
 		_district[ i ].assign(	progmem_read_byte( d->enable ),
 					progmem_read_byte( d->direction ),
 					progmem_read_byte( d->adc_pin ),
 					progmem_read_byte( d->adc_test ));
 	}
+	
 	//
 	//	Ensure everything is off.
 	//
@@ -98,6 +115,9 @@ void Districts::initialise( void ) {
 //	Return the number of the zone currently being operated.
 //
 byte Districts::zone( void ) {
+	
+	STACK_TRACE( "byte Districts::zone( void )" );
+	
 	return( _zone );
 }
 
@@ -106,15 +126,33 @@ byte Districts::zone( void ) {
 //
 //	Set the power to target zone.
 //
-void Districts::power( byte zone ) {
+bool Districts::power( byte zone ) {
+	
+	STACK_TRACE( "bool Districts::power( byte zone )" );
+	
+	byte	count;
+
 	_zone = zone;
-	for( byte i = 0; i < districts; i++ ) _district[ i ].power( progmem_read_byte( _district_data[ i ].zone ) == zone );
+	count = 0;
+	for( byte i = 0; i < districts; i++ ) {
+		if( progmem_read_byte( _district_data[ i ].zone ) == zone ) {
+			count++;
+			_district[ i ].power( true );
+		}
+		else {
+			_district[ i ].power( false );
+		}
+	}
+	return(( zone == 0 )||( count > 0 ));
 }
 
 //
 //	Return current load average (0-100) for indicated district
 //
 byte Districts::load_average( byte index ) {
+	
+	STACK_TRACE( "byte Districts::load_average( byte index )" );
+	
 	if( index >= districts ) return( 0 );
 	return( _district[ index ].load_average());
 }
@@ -123,6 +161,9 @@ byte Districts::load_average( byte index ) {
 //	Return the state of this district
 //
 District::district_state Districts::state( byte index ) {
+	
+	STACK_TRACE( "District::district_state Districts::state( byte index )" );
+	
 	if( index >= districts ) return( District::state_unassigned );
 	return( _district[ index ].state());
 }

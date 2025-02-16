@@ -24,32 +24,49 @@
 #include "Parameters.h"
 #include "Configuration.h"
 #include "Console.h"
+#include "Trace.h"
 
 //
 //	The CONSOLE device
 //	==================
 //
-static Byte_Queue_Signal< CONSOLE_INPUT >	console_in;
-static Byte_Queue< CONSOLE_OUTPUT >		console_out;
 
-USART_IO					console;
+Console	console;
 
 
 //
 //	The call to initialise it.
 //
-void initialise_console( USART_line_speed speed ) {
+void Console::initialise( byte dev, USART_line_speed speed ) {
+	
 	//
 	//	Set up the serial connection.
 	//
-	console.initialise( 0, speed, CS8, PNone, SBOne, &console_in, &console_out );
+	USART_IO::initialise( dev, speed, CS8, PNone, SBOne, &_in, &_out );
+
+	//
+	//	Configure the synchronisation of the output.
+	//
+	synchronous( DEBUGGING_OPTION( true, false ));
 }
 
 //
 //	Get address of the control gate.
 //
-Signal *console_control( void ) {
-	return( console_in.control_signal());
+Signal *Console::control_signal( void ) {
+#ifdef DEBUGGING_ENABLED
+	Signal *flag;
+
+	flag = _in.control_signal();
+
+	TRACE_CONSOLE( console.print( F( "Console flag " )));
+	TRACE_CONSOLE( console.println( flag->identity()));
+
+	return( flag );
+	
+#else
+	return( _in.control_signal());
+#endif
 }
  
 

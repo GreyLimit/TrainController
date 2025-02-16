@@ -21,21 +21,15 @@
 #include "Environment.h"
 #include "Parameters.h"
 #include "Configuration.h"
-
+#include "Task_Entry.h"
 #include "Signal.h"
-
-//
-//	Define, in microseconds, the duration of a "tick", the unit of
-//	time which this module will operate in.
-//
-#define CLOCK_TICK	50
 
 //
 //	Define (if not already defined) the maximum number of clock
 //	events which the system will handle.
 //
 #ifndef CLOCK_EVENTS
-#define CLOCK_EVENTS	8
+#define CLOCK_EVENTS	12
 #endif
 
 //
@@ -51,6 +45,7 @@
 //	Map Clock symbols onto target Timer hardware
 //
 #define CLK_COUNTER_BITS	8
+#define CLK_MAX_COUNTER		250
 #define CLK_TCCRnA		TCCR0A
 #define CLK_TCCRnB		TCCR0B
 #define CLK_TIMERn_COMPA_vect	TIMER0_COMPA_vect
@@ -59,6 +54,7 @@
 #define CLK_WGMn1		WGM01
 #define CLK_CSn0		CS00
 #define CLK_CSn1		CS01
+#define CLK_CSn2		CS02
 #define CLK_TIMSKn		TIMSK0
 #define CLK_OCIEnA		OCIE0A
 
@@ -73,6 +69,7 @@
 //	Map Clock symbols onto target Timer hardware
 //
 #define CLK_COUNTER_BITS	8
+#define CLK_MAX_COUNTER		250
 #define CLK_TCCRnA		TCCR0A
 #define CLK_TCCRnB		TCCR0B
 #define CLK_TIMERn_COMPA_vect	TIMER0_COMPA_vect
@@ -81,6 +78,7 @@
 #define CLK_WGMn1		WGM01
 #define CLK_CSn0		CS00
 #define CLK_CSn1		CS01
+#define CLK_CSn2		CS02
 #define CLK_TIMSKn		TIMSK0
 #define CLK_OCIEnA		OCIE0A
 
@@ -91,92 +89,12 @@
 #endif
 
 //
-//	Using the define CPU cycles per second, F_CPU, calculate how
-//	many clock cycles are required to make up a period of CLOCK_TICK
-//	usecs.
+//	From the above declare aliases for the clock hardware counter
+//	register and the clock hardware comparison register.
 //
-#define CYCLES_PER_TICK	(CLOCK_TICK*(F_CPU/1000000))
+#define CLK_COUNTER_REG		CLK_TCNTn
+#define CLK_COMPARE_REG		CLK_OCRnA
 
-//
-//	Calculate the range of the timers counter
-//
-#define CLK_RANGE	(1<<CLK_COUNTER_BITS)
-
-//
-//	Determine the clock pre-scaler required to get this into
-//	an 8-bit timer counter.
-//
-//	The CSn2, CSn2 and CSn0 bits of the TCCRnB register select
-//	the pre-scaler using the following values:
-//
-//		CSn2	CSn1	CSn0	Decimal	Clock Effect
-//		----	----	----	-------	------------
-//
-//		0	0	0	0	No clock source (Timer/Counter stopped)
-//		0	0	1	1	clk (no prescaling)
-//		0	1	0	2	clk/8 (from prescaler)
-//		0	1	1	3	clk/64 (from prescaler)
-//		1	0	0	4	clk/256 (from prescaler)
-//		1	0	1	5	clk/1024 (from prescaler)
-//		1	1	0	6	External clock source on T0 pin. Clock on falling edge.
-//		1	1	1	7	External clock source on T0 pin. Clock on rising edge.
-//
-
-//
-//	Try a pre-scaler of 1.
-//	----------------------
-//
-#if CYCLES_PER_TICK < CLK_RANGE
-
-#define CLK_CSn		1
-#define CLK_TICKS	CYCLES_PER_TICK
-
-//
-//	Try a pre-scaler of 8.
-//	----------------------
-//
-#elif CYCLES_PER_TICK < (CLK_RANGE*8)
-
-#define CLK_CSn		2
-#define CLK_TICKS	(CYCLES_PER_TICK/8)
-
-//
-//	Try a pre-scaler of 64.
-//	----------------------
-//
-#elif CYCLES_PER_TICK < (CLK_RANGE*64)
-
-#define CLK_CSn		3
-#define CLK_TICKS	(CYCLES_PER_TICK/64)
-
-//
-//	Call any other option an error.
-//
-#else
-
-#error "Clock timer calculation error."
-
-#endif
-
-//
-//	The following two macros convert Millisecond and Microsecond
-//	values into a number of CLOCK_TICK units.  For Milliseconds these
-//	will always be accurate (assuming CLOCK_TICK is a factor of 1000).
-//	For microseconds this cannot be the case since the value of
-//	CLOCK_TICK is defined in microseconds there is always going to
-//	be a rounding effect.
-//
-//	Working on the premise that microsecond delays are for
-//	the purpose of timing delays with hardware, then the calculation
-//	will always round up to the next CLOCK_TICK; A microsecond
-//	duration should be read as "not less than X microseconds".
-//
-//	It is advised that these macros are only ever used with constant
-//	values that can be pre-calculated at compile time (or the calculation
-//	could overwhelm the delays requested!)
-//
-#define MSECS(t)	((((unsigned long)(t))*1000)/CLOCK_TICK)
-#define USECS(t)	(((t)+(CLOCK_TICK-1))/CLOCK_TICK)
 
 //
 //	Define the software interface to the clock routines.  These
@@ -186,7 +104,259 @@
 //	based activities which are paced through time in a controlled
 //	fashion.
 //
-class Clock {
+class Clock : public Task_Entry {
+public:
+	//
+	//	Timing the Clock
+	//	================
+	//
+	//	The original version of this module used a regular (very regular)
+	//	interrupt to manage a chronologically sorted list of pending
+	//	Signals awaiting a call to release them.
+	//
+	//	New timer requests were simply inserted into the queue (or
+	//	appended as appropiate) meaning that the sum of all the events
+	//	pending times plus its own pending time gave the time left
+	//	before that events time.
+	//
+	//	This worked, but would seem to have had extracted too much cost
+	//	from the MCU, leaving little time for other events/interrupts
+	//	to execute in a timely manner.
+	//
+	//	This new version will generate an interrupt only when required,
+	//	making the insertion of timed events at the head of the queue
+	//	now much more tricky.
+	//
+	//	We start with the two options : one we cannot change and
+	//	one we can:  MCU clock speed and clock divider.
+	//
+	//	The MCU clock, as an input to the timer, can be divided
+	//	by the following factors:
+	//
+	//		1, 8, 64, 256, or 1024
+	//
+	//	For our purposes we would like the clock/divider combination
+	//	to provide a "useful" balance between too often (giving
+	//	higher accuracy but too little range) and too infrequently
+	//	(giving poor accuracy but ample range).
+	//
+	//	The target for the clock module is to time a whole second
+	//	accurately, but with enough accuracy that driver pauses
+	//	in the 10us to 50us range can be reasonably approximated.
+	//
+	//	This therefore leads to the first conclusion:  An 8-bit
+	//	timer is not able to achieve this.  With only ~250 steps
+	//	this would mean that the smallest interval that could be
+	//	tracked being 4ms (1/250th of a second).
+	//
+	//	The solution required will need to be clever.  The system
+	//	does not have to be able to time a whole second; the
+	//	introduction of "synthetic" events matching the maximum
+	//	countable period of time will allow the module to "step"
+	//	through time in countable pieces.
+	//
+	//	So, what is possible with the hardware available?
+	//
+	//	The following table show what can be done with the CPU
+	//	clock and dividers available (value are in micro seconds
+	//	1/1,000,000th of a seocnd):
+	//
+	//	Clock		8Mhz	16MHz	20Mhz
+	//	Divider		----	-----	-----
+	//		1	0.125	0.0625	0.05
+	//		8	1	0.5	0.4
+	//		64	8	4	3.2
+	//		256*	32	16	12.8
+	//		1024	128	64	51.2
+	//
+	//	This table extrapolates these times by 250 to understand
+	//	the maximum countable period by combination (times
+	//	converted from micro seconds to milliseconds, truncated):
+	//
+	//	Clock		8Mhz	16MHz	20Mhz
+	//	Divider		----	-----	-----
+	//		1	 0.03	 0.01	0.01
+	//		8	 0.25	 0.12	0.10
+	//		64	 2.00	 1.00	0.80
+	//		256*	 8.00	 4.00	3.20
+	//		1024	32.00	16.00	12.8
+	//
+	//	It is noteable that the "optimal" divider is the same
+	//	across all clock speeds (see entries marked with an
+	//	asterix, '*').  This is mostly because the granularity
+	//	of the divider is significantly larger than the
+	//	graduation between processor speeds.
+	//
+	//	The following, conditional, sections of code will pull
+	//	the necessary calculations together from the above
+	//	tables and the compile time F_CPU parameter.
+	//
+	//	Even though they are all identical.
+	//
+	//	It is worth noting that, although the range parameter
+	//	becomes shorter as the clock speed increases, it always
+	//	represents the same number of clock cycles and hense
+	//	executed instructions.  Therefore the smaller periods
+	//	do not represent a heavier load on the MCU.
+	//
+
+#if F_CPU == 8000000
+	//
+	//	8 MHz: Step 32us, Range 8ms.
+	//	
+	static const word	clock_divider = 256;
+
+#elif F_CPU == 16000000
+	//
+	//	16 MHz: Step 16us, Range 4ms.
+	//	
+	static const word	clock_divider = 256;
+
+#elif F_CPU == 20000000
+	//
+	//	20 MHz: Step 12.8us, Range 3.2ms.
+	//	
+	static const word	clock_divider = 256;
+
+#else
+
+#error "CPU/MCU Clock speed not recognised."
+
+#endif
+
+	//
+	//	Setting the Output Compare Register value.
+	//
+	//	This is not necessarily that obvious.  The Atmel docs
+	//	give the following, backwards, formula for working out
+	//	the frequency of an interrupt based on the value in the
+	//	output compare register:
+	//
+	//					CPU_freq
+	//		Output_freq = -----------------------------------
+	//				2 x N x ( 1 + Compare_Register )
+	//
+	//	The '2' in the bottom does make immediate sense until
+	//	you realise that 'Output_freq' represents the complete
+	//	output wave form (both the "up" and "down" sections)
+	//	which takes 2 compare matches to create.  Therefore to
+	//	get the frequency of the compare matches you remove the
+	//	'2'.  Thus the above is re-written as:
+	//
+	//					CPU_freq
+	//		Compare_freq = ------------------------------
+	//				N x ( 1 + Compare_Register )
+	//
+	//	Now, divide both side by 'CPU_freq', and cancel out:
+	//
+	//		Compare_freq 			CPU_freq
+	//		------------- = ---------------------------------------------
+	//		CPU_freq	( N x ( 1 + Compare_Register )) * CPU_freq
+	//
+	//	thus:
+	//
+	//		Compare_freq 			1
+	//		------------- = ------------------------------
+	//		CPU_freq	N x ( 1 + Compare_Register )
+	//
+	//	Multiply both side by N and cancel out:
+	//
+	//		N x Compare_freq		N
+	//		---------------- = ------------------------------
+	//		CPU_freq	     N x ( 1 + Compare_Register )
+	//
+	//	thus:
+	//
+	//		N x Compare_freq		1
+	//		---------------- = ------------------------
+	//		CPU_freq	     1 + Compare_Register
+	//
+	//	Finally we invert the formula and move the '1' across:
+	//
+	//		CPU_freq	
+	//		---------------- =  1 + Compare_Register
+	//		N x Compare_freq
+	//
+	//	Thus:
+	//
+	//		CPU_freq
+	//		---------------- - 1 = Compare_Register
+	//		N x Compare_freq
+	//
+	//	This final version gives us the actual value that needs
+	//	to be placed into the compare register to obtains a
+	//	specific *frequency*.  For the purposes of this clock
+	//	code all calculations are made in time units, not basic
+	//	frequency.  Therefore, noting the following relationship:
+	//
+	//			  1			   1
+	//		freq = -------	  or	period = ------
+	//			period			  freq
+	//
+	//	Be careful to track units; the basic units are Hz and
+	//	Seconds.
+	//
+	//	Substituting the second equation above into the compare
+	//	register equation we get:
+	//
+	//				    CPU_freq x period
+	//		Compare_Register = -------------------  -1
+	//					    N
+	//
+	//	It would seem that the above is a terrific labour to get
+	//	to the obvious end: a simply way to convert time into
+	//	known counts.
+	//
+
+	//
+	//	Define, in microseconds, the duration of a "tick", the
+	//	indivisible unit of time which this module count in.
+	//
+	//	clock_tick_hz		Convert the base CPU frequency
+	//				into the frequency of the counter.
+	//
+	//	However, converting the counted frequency into the
+	//	obvious microseconds value (as an integer) would be
+	//	subject to rounding issues.
+	//
+	//	So we actually convert "clock_tick_hz" into 10ths of a
+	//	microsecond to create an extra digit of accuracy.
+	//
+	//	clock_tick_10ths	Counted frequency as 10ths of a
+	//				microsecond.
+	//
+	static const dword	milliseconds		= 1000;
+	static const dword	microseconds		= 1000000;
+	static constexpr dword	clock_tick_hz		= (dword)F_CPU / (dword)clock_divider;
+	static constexpr word	clock_tick_10ths	= ( 10 *  microseconds ) / clock_tick_hz;
+
+	//
+	//	Maximum consecutive clock ticks which can be counted.
+	//
+	static const byte	maximum_count		= CLK_MAX_COUNTER;
+	
+	//
+	//	The following two macros convert firmware expressed times
+	//	in Milliseconds or Microseconds into a number of counted
+	//	clock ticks (as a word value).
+	//
+	//	Working on the premise that microsecond delays are for
+	//	the purpose of timing delays with hardware, then the calculation
+	//	will always round up to the next clock_tick; A microsecond
+	//	duration should be read as "not less than X microseconds".
+	//
+	//	The milliseconds calculation will round down and should
+	//	therefore be read as "not mroe than X milliseconds".
+	//
+	//	It is advised that these macros are only ever used with
+	//	constant values that can be pre-calculated at compile
+	//	time (or the calculation could overwhelm the delays
+	//	requested!)
+	//
+#define MSECS(t)	((((dword)(t))*10000)/Clock::clock_tick_10ths)
+#define USECS(t)	((((dword)(t))*10+(Clock::clock_tick_10ths-1))/Clock::clock_tick_10ths)
+
+
 private:
 	//
 	//	How many events are we prepared to work with?
@@ -202,29 +372,66 @@ private:
 		Signal		*gate;		// The signal to release.
 		clock_event	*next;
 	};
+
 	//
 	//	Our task managing pointers and the array of records
 	//	which we have to manage.
 	//
-	clock_event	*_active,
-			*_free,
-			_events[ clock_events ];
+	volatile clock_event	*_active,
+				*_free;
+	clock_event		_events[ clock_events ];
+	
+	//
+	//	Declare the Signal used as a link between the interrupt
+	//	and the routine schedulling the work.
+	//
+	Signal			_irq;
 
 	//
 	//	Insert an event into the active list according to the
 	//	number of ticks specified in the left field.
 	//
 	void insert( clock_event *ptr );
+	
+	//
+	//	Stop the timer running until start time has been called again.
+	//
+	void inline stop_timer( void ) {
+		//
+		//	Bring the timer to a halt.
+		//
+		//	Disable timer compare interrupt
+		//
+		CLK_TIMSKn &= ~bit( CLK_OCIEnA );
+		//
+		//	Reset counter and compare registers
+		//
+		CLK_COUNTER_REG = 0;
+		CLK_COMPARE_REG = maximum_count;
+	}
+		
+	//
+	//	Restart the timer for a fixed number of counts.
+	//
+	void inline start_timer( byte delay ){
+		//
+		//	Set compare match register to
+		//	generate the correct tick duration.
+		//
+		CLK_COMPARE_REG = delay;
+		CLK_COUNTER_REG = 0;
+		//
+		//	Enable timer compare interrupt
+		//
+		CLK_TIMSKn |= bit( CLK_OCIEnA );
+	}
 
 public:
+	//
+	//	Object creation and initialisation routines
+	//
 	Clock( void );
-
-	//
-	//	This is the interrupt routine, called every single
-	//	tick of the clock.  This needs to be as short as
-	//	possible to avoid bogging down the whole firmware.
-	//
-	void tick( void );
+	void initialise( void );
 
 	//
 	//	This is the interface into the clock allowing new
@@ -240,6 +447,28 @@ public:
 	//	any pause being experienced.
 	//
 	void inline_delay( word ticks );
+
+	//
+	//	provide inline functions to convert time to time steps.
+	//
+	static inline word msecs( word ms ) {
+		return( MSECS( ms ));
+	}
+	static inline word usecs( word us ) {
+		return( USECS( us ));
+	}
+	
+	//
+	//	Routine called to record an interrupt event.
+	//
+	void irq( void );
+	
+	//
+	//	This is the service routine, called as a result of the
+	//	clock tick interrupt.
+	//
+	virtual void process( byte handle );
+
 };
 
 

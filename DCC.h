@@ -13,17 +13,21 @@
 //	Bring in the Driver class as we require this inside the DCC
 //	Generator class.
 //
-#include "Configuration.h"
 #include "Environment.h"
+#include "Parameters.h"
+#include "Configuration.h"
+
 #include "Protocol.h"
 #include "Driver.h"
 #include "Task_Entry.h"
 #include "Critical.h"
 #include "Driver.h"
 #include "DCC_Constant.h"
+#include "Pin_IO.h"
 #include "Function.h"
 #include "Buffer.h"
 #include "Constants.h"
+#include "Average.h"
 
 //
 //	Hardware specific DCC configuration
@@ -71,6 +75,20 @@
 
 #endif
 
+//
+//	Set an alias for the Timer Compare Register.  This is
+//	not essential given that the actual register name is already
+//	hidden behind an alias.  However, the "english" stlye alias
+//	make the source code easier to read and understand.  Got to be
+//	a good thing.
+//
+#define DCC_COMPARE_REGISTER	DCC_OCRnA
+
+//
+//	Do similar for the actual counter register
+//
+#define DCC_COUNTER_REGISTER	DCC_TCNTn
+
 
 //
 //	Define the DCC Generator class.
@@ -79,92 +97,156 @@ class DCC : public Task_Entry {
 public:
 	//
 	//	Timing definitions
-	//	------------------
+	//	==================
 	//
 
 	//
-	//	The following paragraphs and numerical calculations are
-	//	based on a spread sheet used to analyse the possible
-	//	subdivisions of the DCC signal timing (spreadsheet not
-	//	included).
+	//	The following discussion and calculations are the second
+	//	system this firmwware will have used for the correct
+	//	generation of the DCC data signal.  I feel that an
+	//	explanation of the first methods approach and how it
+	//	worked will help with the generation and understanding
+	//	of the second, new, system,
 	//
-	//	The key point of the analysis is to find a common divisor
-	//	between the duration of half a "1" bit (58 us) and half a
-	//	"0" bit (100 us) based on the basic clock frequency of
-	//	the Arduino and ideally giving an interval count sum that
-	//	fits into an 8-bit interrupt counter.
+	//	Verion 1
+	//	--------
 	//
-	//	The analysis determined that dividing the "1" unit of time
-	//	(58 us) by 4 gave a period of 14.5 us, which divides into
-	//	the "0" unit of time into 7 with an acceptable margin of
-	//	error (~1.5%).
+	//	The original timing generation is based on my early
+	//	and simplistic understanding of the Clock/Timing hardware
+	//	of the AVR MCU.  Essentially being unclear on how flexible
+	//	it was and what was possible I looked for a solution where
+	//	the hardware could be configured a single time and all
+	//	the necessary signal data could be generated from this.
 	//
-
+	//	Hense the hardwaare was configured to generate a 14.5us
+	//	interrupt which formed whole sub-sections of half a DCC
+	//	digit where 4 "ticks" formed the 1 and 7 the 0.  This
+	//	lead to a lot of interrupts but the earlier firmware being
+	//	simpler and more limited, retained the capacity to support
+	//	these in a timely way.
 	//
-	//	These macros define the number of Interrupt Cycles that the
-	//	interrupt timer must count before raising an interrupt
-	//	to create a target interval of 14.5 us.
+	//	A valid DCC signal was generated.
 	//
-	//	This period we are calling a "tick", multiples of which
-	//	are used to build up the intervals required to create
-	//	the DCC signal.
+	//	The "full on" re-write of the firmware (caused by the aim
+	//	of producing a DCC Controller that could be directly used
+	//	by a human operator) pushed the MCU to the point where
+	//	it was simply unable to keep time.
 	//
-	//	Simplistically the "MHz" clock rate of the board multiplied
-	//	by the selected "tick" duration (in microseconds) gives the
-	//	base starting point.
+	//	No valid DCC was generated.
 	//
-
-#if F_CPU == 16000000
+	//	Version 2
+	//	---------
 	//
-	//	Arduino Uno (or equivalent)
+	//	The key change from version one is that the Timer will
+	//	now be modified dynamically to generate an interrupt
+	//	*only* when it is time for the DCC signal to "flip" and
+	//	transition from "+/-" to "-/+" or back again.
 	//
-	//		16 (MHz) x 14.5 (microseconds) = 232 (clock cycles)
+	//	To do this we will, once again, require some form of
+	//	interval that factors into the timing for half of a DCC
+	//	1 (58us) or 0 digit (100us) and we can base this
+	//	calculation, on the work done for version of the timing
+	//	code.
 	//
-	//	This fits inside the 8-bit interrupt timer limit (255), so
-	//	no interrupt pre-scaler is required (so equal to 1).
+	//	This is actually simpler because we can count (with the
+	//	hardware) much, much faster than software.  So lets look
+	//	at some blindingly obvious options:
 	//
-	//	Within the DCC standard, the half time of a "1" bit is
-	//	58 us:
-	//		4 ticks of 14.5 us are exactly 58 us (0% error).
+	//	The CPU clock, as an input to the timer, can be divided
+	//	by the following factors:
 	//
-	//	Like wise, the nominal half time of a "0" bit is 100 us,
-	//	so:
-	//		7 ticks of 14.5 us gives a time of 101.5 us (1.5% error).
+	//		1, 8, 64, 256, or 1024
 	//
-	static const byte	timer_interrupt_cycles = 232;
-	static const byte	timer_clock_prescaler = 1;
-
-#elif F_CPU == 20000000
+	//	For an *ideal* fit we need to configure the clock and
+	//	divider to produce 1 or 2 micro second increments.  The
+	//	following table show what can be done with the CPU clock
+	//	and dividers available (value are in micro seconds):
 	//
-	//	Arduino Mega (or equivalent)
+	//	Clock		8Mhz	16MHz	20Mhz
+	//	Divider		----	-----	-----
+	//		1	0.125	0.0625	0.05
+	//		8	1	0.5	0.4
+	//		64	8	4	3.2
+	//		256	32	16	12.8
+	//		1024	128	64	51.2
 	//
-	//		20 (MHz) x 14.5 (microseconds) = 290 (clock cycles)
+	//	Our aim is to find a balance between keeping the interval
+	//	counters inside the 8-bit range while keeping the actual
+	//	intervals being counted as small as possible.  The
+	//	following tables break down each of the Clock speeds
+	//	while analysing the divider options.  The optimal divider
+	//	ratio is marked with an asterix (*).
 	//
-	//	This is too big for the 8 bit timer we are using, so we select
-	//	the smallest available pre-scaler: 8
+	//	8 MHz
+	//	-----
 	//
-	//		290 (clock cycles) / 8 = 36.25
+	//	This is an unlikely speed, but might be required if the
+	//	AVR MCU is to be run at 3.3 volts rather than 5 volts.
 	//
-	//	Round down to 36 and multiply out to determine the resulting
-	//	tick interval:
+	//	Digit		Interval	1 (58us)	0 (100us)
+	//	Divider		--------	--------	---------
+	//		1	0.125		464		800
+	//		8*	1		58		100
+	//		64	8		7.25		12.5
+	//		256	32		1.81..		3.125
+	//		1024	128		0.45..		0.78..
 	//
-	//		36 * 8 / 20 = 14.4 us
+	//	16 MHz
+	//	------
 	//
-	//	This makes the time interval the Interrupt Service Routine
-	//	must complete in marginally shorter, but is easily offset with
-	//	the higher intrinsic clock rate.
+	//	Digit		Interval	1 (58us)	0 (100us)
+	//	Divider		--------	--------	---------
+	//		1	0.0625		928		1600
+	//		8*	0.5		116		200
+	//		64	4		14.5		25
+	//		256	16		3.625		6.25
+	//		1024	64		0.90..		1.56..
+	//	20 MHz
+	//	------
 	//
-	//	Therefore the we get the "half time" of a "1" as:
+	//	Digit		Interval	1 (58us)	0 (100us)
+	//	Divider		--------	--------	---------
+	//		1	0.05		1160		2000
+	//		8*	0.4		145		250
+	//		64	3.2		18.125		31.25
+	//		256	12.8		4.53..		7.81..
+	//		1024	51.2		1.13..		1.95..
 	//
-	//		4 ticks of 14.4 us is 57.6 us (0.6% error)
+	//	So, for the "norminal" range of AVR MCU Clock speeds the
+	//	best clock divider is always the same: 8.
 	//
-	//	Like wise, the nominal "half time" of a "0" bit is 100 us,
-	//	so:
-	//		7 ticks of 14.4 us gives a time of 100.8 us (0.8% error)
+	//	This is a surprise to me, but seems correct, so on this
+	//	basis we continue:
 	//
-	static const byte	timer_interrupt_cycles = 36;
+	//	The following table summarises the counts required to
+	//	time the 0 and 1 DCC digits:
+	//
+	//	Clock		8	16	20
+	//	Digit		-	--	--
+	//		0	100	200	250
+	//		1	58	116	145
+	//
+	//	These counts all fall inside the 8-bit timer counter
+	//	*and* have a 100% accuracy!
+	//
+	
+	//
+	//	Encode this data into the DCC Class.
+	//
 	static const byte	timer_clock_prescaler = 8;
-
+	
+#if F_CPU == 8000000
+	static const byte	timer_digit_0_cycles = 100;
+	static const byte	timer_digit_1_cycles = 58;
+	
+#elif F_CPU == 16000000
+	static const byte	timer_digit_0_cycles = 200;
+	static const byte	timer_digit_1_cycles = 116;
+	
+#elif F_CPU == 20000000
+	static const byte	timer_digit_0_cycles = 250;
+	static const byte	timer_digit_1_cycles = 145;
+	
 #else
 	//
 	//	The target MCU clock frequency has not been accounted for.
@@ -177,16 +259,6 @@ public:
 	//	timer_clock_prescaler values.
 	//
 #endif
-
-	//
-	//	The following two macros return the number of interrupt
-	//	ticks (in the light of the above calculations ) which
-	//	are required to generate half of a "1" or half of a "0"
-	//	bit in the DCC signal.
-	//
-	static const byte	ticks_for_one = 4;
-	static const byte	ticks_for_zero = 7;
-
 
 	//
 	//	DCC Constant Definitions
@@ -220,6 +292,15 @@ public:
 	static const byte	maximum_output		= 16;
 
 	//
+	//	In contradiction to the above maxima, the follow is required
+	//	specifically for the support of the EEPROM manipulation
+	//	commands where they reply with long (too long!) human
+	//	names for the constants.  The above space simply is not
+	//	sufficient to encompass these test strings.
+	//
+	static const byte	eeprom_maximum_output	= 48;
+
+	//
 	//	Define the number of buffers set aside for storing DCC packets
 	//	before transmission and the number of packets which can be 
 	//	transmitted aat any given time.
@@ -233,6 +314,48 @@ public:
 	static const byte	transmission_buffers	= TRANSMISSION_BUFFERS;
 #else
 	static const byte	transmission_buffers	= SELECT_SML(8,16,32);
+#endif
+
+	//
+	//	Declare the maximum number of "persistent" transmissions
+	//	(where the duration is set to zero) as a fraction of the
+	//	total number of transmission buffer.
+	//
+	static constexpr byte	max_persistent_buffers	= transmission_buffers - SELECT_SML(4,6,8);
+
+#if defined( ENABLE_DCC_DELAY_REPORT ) || defined( ENABLE_DCC_SYNCHRONISATION )
+	//
+	//	DCC Delay reporting and tuning
+	//	------------------------------
+	//
+	//	If either of the delay reporting or delay tuning code has
+	//	been included then the following constant definition is
+	//	created to capture the extent of the data window used
+	//	to create the average delay information.
+	//
+#ifdef DCC_AVERAGE_DELAYS
+	static const byte	delays			= DCC_AVERAGE_DELAYS;
+#else
+	static const byte	delays			= 16;
+#endif
+
+#if defined( ENABLE_DCC_SYNCHRONISATION )
+	//
+	//	Define a ceiling for the maxiumum amount of time that the
+	//	DCC IRQ routine will synchronise to.
+	//
+	static constexpr byte	max_sync		= timer_digit_1_cycles / 2;
+#endif
+#endif
+
+	//
+	//	Declare the number of milliseconds between the DCC system
+	//	trimming the IRQ synchronisation value.
+	//
+#ifdef DCC_RECALIBRATION_PERIOD
+	static const word dcc_recalibration_period	= DCC_RECALIBRATION_PERIOD;
+#else
+	static const word dcc_recalibration_period	= 1000;
 #endif
 
 	//
@@ -539,12 +662,11 @@ private:
 		//	-------------------------
 		//
 		//
-		//	The target ID of the packet.  Note the following usage:
-		//
-		//		target == 0	Transient command (self deleting)
-		//		target > 0	Mobile Decoder (possibly permanent)
+		//	The target ID of the packet, and an indication
+		//	of what the target is.
 		//
 		word		target;
+		bool		mobile;
 		//
 		//	The duration countdown (if non-zero).  An initial value
 		//	of zero indicates no countdown meaning the packet is transmitted
@@ -600,34 +722,63 @@ private:
 				*_manage;	// Next buffer to be managed.
 
 	//
+	//	Record the number of persistent buffers *that can be
+	//	created*.  This is a "count down" value meaning that
+	//	when zero no more persistent transmissions can be
+	//	created.
+	//
+	byte			_persistent;
+
+	//
 	//	Signal generation variables, not volatile as they are
 	//	only modified by the interrupt routine.
 	//
-	byte			_remaining,
-				_left,
-				_reload,
+	byte			_left,
 				*_bit_string;
 	bool			_side,
 				_one;
 
 	//
 	//	For statistical purposes the following variable are
-	//	maintained
+	//	maintained:
 	//
 	byte			_free_buffers;
 	word			_packets_sent;
+#if defined( ENABLE_DCC_DELAY_REPORT ) || defined( ENABLE_DCC_SYNCHRONISATION )
+	Average< delays, byte >	_delay;
+#endif
+#if defined( ENABLE_DCC_SYNCHRONISATION )
+	byte			_irq_sync;
+#endif
+
+	//
+	//	Declare the task manager handle for managment
+	//
+	static const byte management_process = 1;
 
 	//
 	//	Declare the link back to the "Manager" task.  The
 	//	ISR will "release()" _manager for every record in
 	//	the transmission buffers that needs management
-	//	attention.  The Manager will the "claim()" each one
-	//	as it is processed.
+	//	attention.
 	//
 	//	This system creates a simple and effective asynchronous
 	//	supplier/consumer between the two systems.
 	//
 	Signal			_manager;
+
+#ifdef ENABLE_DCC_SYNCHRONISATION
+	//
+	//	Declare the task manager handle for recalibration
+	//
+	static const byte recalibrate_process = 2;
+
+	//
+	//	This is the signal used to schedule an IRQ synchonisation
+	//	recalibration.
+	//
+	Signal			_recalibrate;
+#endif
 	
 	//
 	//	Private support routines.
@@ -705,12 +856,7 @@ private:
 	//	Request an empty buffer to be set aside for building
 	//	a new transmission activity.
 	//
-	//	Default target of zero is the "any free record" option.
-	//
-	//	Note:	target > 0	Mobile Decoder
-	//		target < 0	Accessory Decoder
-	//
-	trans_buffer *acquire_buffer( word target = DCC_Constant::broadcast_address, bool overwrite = false );
+	trans_buffer *acquire_buffer( word target, bool mobile, bool overwrite );
 
 	//
 	//	This is the routine which adds a pending DCC packet to the
@@ -744,6 +890,11 @@ public:
 	//	start getting calls to toggle the direction pins to
 	//	generate the output signal.
 	//
+	//	clock out is a pin specifically used export the internal
+	//	DCC clock from the ISR routine to enable basic operational
+	//	state verification (ie, is there even a clock working,
+	//	and what speed is it?).
+	//
 	void initialise( void );
 
 	//
@@ -752,14 +903,11 @@ public:
 	//	clock_pulse() routine by releasing a resource on the
 	//	"_manager" signal.
 	//
-	//	The task manager, seeing a resource become available, will
-	//	initiate the call to this routine.
-	//
 	//	The Signal object manages all aspects of of concurrency
 	//	where the ISR might release multiple transmission records
 	//	before the manager routine is scheduled.
 	//
-	virtual void process( void );
+	virtual void process( byte handle );
 
 	//
 	//	Define the Interrupt Service Routine, where we do the work.  This is
@@ -772,16 +920,22 @@ public:
 	//	API for sending commands out through DCC.  *ALL* paramters
 	//	are the DCC specification values.  Note especially speeds.
 	//
-	bool mobile_command( word target, byte speed, byte direction );
-	bool accessory_command( word target, byte state );
-	bool function_command( word target, byte func, byte state );
-	bool state_command( word target, byte speed, byte dir, byte fn[ DCC_Constant::bit_map_array ]);
+	bool mobile_command( word target, byte speed, byte direction, Buffer_API *reply = NIL( Buffer_API ));
+	bool accessory_command( word target, byte state, Buffer_API *reply = NIL( Buffer_API ));
+	bool function_command( word target, byte func, byte state, Buffer_API *reply = NIL( Buffer_API ));
+	bool state_command( word target, byte speed, byte dir, byte fn[ DCC_Constant::bit_map_array ], Buffer_API *reply = NIL( Buffer_API ));
 
 	//
 	//	Routines used to access statistical analysis
 	//
 	byte free_buffers( void );
 	word packets_sent( void );
+#if defined( ENABLE_DCC_DELAY_REPORT ) || defined( ENABLE_DCC_SYNCHRONISATION )
+	byte irq_delay( void );
+#endif
+#if defined( ENABLE_DCC_SYNCHRONISATION )
+	byte irq_sync( void );
+#endif
 };
 
 //

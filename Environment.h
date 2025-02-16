@@ -11,24 +11,14 @@
 //	To complete some of these tasks we have to bring in
 //	the Arduino environment first.
 //
-#ifndef __linux__
 #include <Arduino.h>
 
 //
 //	Bring in the necessary IO and Interrupt definitions.
 //
-//	JEFF
-//
-//		In light of the fact that I am driving all the
-//		the hardware *directly* I do not think that many
-//		of these header files are required.
-//
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
-
-#include <util/twi.h>
-#include <util/delay.h>
 
 #include <compat/twi.h>
 
@@ -36,8 +26,6 @@
 #include <stdlib.h>
 #include <inttypes.h>
 
-
-#endif
 
 //
 //	Include the base library types.
@@ -51,7 +39,7 @@
 //						//
 //////////////////////////////////////////////////
 
-#if defined( ARDUINO_ARCH_AVR ) || defined( ARDUINO_ARCH_MEGAAVR )
+#if defined( ARDUINO_ARCH_AVR ) || defined( ARDUINO_ARCH_MEGAAVR ) || defined( ARDUINO_ARCH_SAMD )
 
 //
 //	AVR MCU Specific PROGMEM code
@@ -60,8 +48,6 @@
 //	AVR system, alias the keyword to function in the knowledge
 //	that the data can only be in real memory.
 //
-
-#include <avr/pgmspace.h>
 
 #define progmem_read_byte(v)		pgm_read_byte(&(v))
 #define progmem_read_byte_at(a)		pgm_read_byte(a)
@@ -244,55 +230,6 @@
 #endif
 
 
-
-//////////////////////////////////////////////////
-//						//
-//	Library type definitions		//
-//	========================		//
-//						//
-//////////////////////////////////////////////////
-//
-
-
-//
-//	Define an enumerated type providing the various
-//	mirroring options for displays:
-//
-//	MirrorNone		Display is only rotated
-//
-//	MirrorHorizontal	Display is rotated then mirrored on a horizontal axis
-//
-//	MirrorVertical		Display is rotated then mirrored on a Vertical axis
-//
-//	typing the above comment I actually cannot remember if my comments
-//	vis the mirror axis are correct.  I need to test and fix (no doubt).
-//
-typedef enum {
-	MirrorNone,
-	MirrorHorizontal,
-	MirrorVertical
-} MirrorMode;
-
-//
-//	Define an enumerated type providing
-//	three possible "synchronisation"
-//	options:
-//
-//	Synchronised		Routine only returns when the action is
-//				completed.
-//
-//	HalfSynchronised	Routine only returns when the command has
-//				been successfully queued for execution.
-//
-//	Asynchronous		Routine returns false if it cannot even queue
-//				the command.
-//
-typedef enum {
-	Synchronised,
-	HalfSynchronised,
-	Asynchronous
-} SyncMode;
-
 //////////////////////////////////////////////////
 //						//
 //	Generic constant definitions		//
@@ -305,6 +242,7 @@ typedef enum {
 //
 #define EOS		'\0'
 #define SPACE		' '
+#define COMMA		','
 #define TAB		'\t'
 #define NL		'\n'
 #define CR		'\r'
@@ -312,6 +250,8 @@ typedef enum {
 #define MINUS		'-'
 #define PLUS		'+'
 #define USCORE		'_'
+#define SLASH		'/'
+#define COLON		':'
 #define DELETE		'\177'
 #define ERROR		(-1)
 

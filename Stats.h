@@ -38,10 +38,27 @@
 //
 class Stats : public Task_Entry {
 private:
+
+#ifdef ENABLE_COUNT_INTERRUPTS
+	//
+	//	Collect stats about the number of interrupts
+	//	which we are collecting.  Here we provide only
+	//	variable into which the data is gathered.
+	//
+	bool	_interrupt_over;
+	word	_interrupt_count;
+
+	//
+	//	The average mechanism
+	//
+	Average< STATS_AVERAGE_READINGS, word >	_interrupts;
+#endif
+
 	//
 	//	The internal stats we are keeping.
 	//
-	Average< STATS_AVERAGE_READINGS >	_packets_sent;
+	Average< STATS_AVERAGE_READINGS, byte >	_packets_sent;
+	Average< STATS_AVERAGE_READINGS, byte >	_free_buffers;
 
 	//
 	//	The control signal used to schedule this object.
@@ -58,13 +75,52 @@ public:
 	//	The routine called once a "period" to gather
 	//	in more stats and .. process them.
 	//
-	virtual void process( void );
+	virtual void process( byte handle );
 
 	//
 	//	Return the packets set in the last time period.
 	//
 	word packets_sent( void );
+
+	//
+	//	Return the free buffers in the last time period.
+	//
+	byte free_buffers( void );
+
+#ifdef ENABLE_COUNT_INTERRUPTS
+	//
+	//	Count an interrupt.
+	//
+	inline void count_interrupt( void ) {
+		if( ++_interrupt_count == 0 ) _interrupt_over = true;
+	}
+	
+	//
+	//	Return the average interrupts processed.
+	//
+	word interrupts_caught( void );
+#endif
+
+
 };
+
+//
+//	The interrupt stats are gathered through this macro.
+//
+#ifdef ENABLE_COUNT_INTERRUPTS
+#define COUNT_INTERRUPT		stats.count_interrupt()
+#else
+#define COUNT_INTERRUPT
+#endif
+
+//
+//	DCC delay capture.
+//
+#ifdef ENABLE_DCC_DELAY_REPORT
+#define SAVE_DCC_DELAY(v)	stats.add_dcc_delay(v)
+#else
+#define SAVE_DCC_DELAY(v)
+#endif
 
 //
 //	The stats object.

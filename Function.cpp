@@ -8,11 +8,15 @@
 
 
 #include "Function.h"
+#include "Trace.h"
 
 //
 //	Define the lookup and manage cache code.
 //
 Function::cache *Function::find( word target ) {
+
+	STACK_TRACE( "Function::cache *Function::find( word target )" );
+
 	cache	**adrs,
 		*last,
 		*ptr;
@@ -134,6 +138,9 @@ Function::Function( void ) {
 //	otherwise.
 //
 bool Function::update( word target, byte func, bool state ) {
+
+	STACK_TRACE( "bool Function::update( word target, byte func, bool state )" );
+
 	cache	*ptr;
 	byte	i, b; 
 
@@ -171,6 +178,9 @@ bool Function::update( word target, byte func, bool state ) {
 //	supplied function number being off or on.
 //
 byte Function::get( word target, byte func, byte val ) {
+
+	STACK_TRACE( "byte Function::get( word target, byte func, byte val )" );
+
 	cache	*ptr;
 	byte	i, b; 
 
@@ -184,9 +194,6 @@ byte Function::get( word target, byte func, byte val ) {
 	if( ptr->bits[ i ] & b ) return( val );
 	return( 0 );
 }
-
-
-
 
 
 //

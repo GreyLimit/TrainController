@@ -16,6 +16,9 @@
 #include "Buffer.h"
 #include "DCC.h"
 #include "Protocol.h"
+#include "Console.h"
+#include "Protocol.h"
+#include "Trace.h"
 
 //
 //	Define the Error handling class
@@ -33,11 +36,6 @@ void Errors::drop_error( void ) {
 	//	Move the output index on.
 	//
 	if( ++_out >= cache_size ) _out = 0;
-	
-	//
-	//	Signal the reduction in available errors.
-	// 
-	_errors.claim();
 }
 
 //
@@ -52,13 +50,16 @@ Errors::Errors( void ) {
 	_count = 0;
 	_in = 0;
 	_out = 0;
+	_output = NIL( Byte_Queue_API );
+	_aborted = false;
 }
 
 //
 //	The initialisation routine for the errors object
 //
-void Errors::initialise( void ) {
-	task_manager.add_task( this, &_errors );
+void Errors::initialise( Byte_Queue_API *to ) {
+	_output = to;
+	if( !task_manager.add_task( this, &_errors )) ABORT( TASK_MANAGER_QUEUE_FULL );
 }
 
 //
@@ -66,7 +67,10 @@ void Errors::initialise( void ) {
 //	output of errors.  This is controlled by the "_errors"
 //	Signal.
 //
-void Errors::process( void ) {
+void Errors::process( UNUSED( byte handle )) {
+
+	STACK_TRACE( "void Errors::process( void )" );
+	
 	error_record			*ptr;
 	Buffer<DCC::maximum_output>	reply;
 
@@ -98,7 +102,7 @@ void Errors::process( void ) {
 	//	Send the error to the console and delete the
 	//	error on success.
 	//
-	if( reply.send( &console )) drop_error();
+	if( reply.send( _output )) drop_error();
 	
 	//
 	//	Done.
@@ -109,8 +113,16 @@ void Errors::process( void ) {
 //	Log an error with the system
 //
 void Errors::log_error( byte error, word arg ) {
+
+	STACK_TRACE( "void Errors::log_error( byte error, word arg )" );
+	
 	byte	i, j;
 
+	//
+	//	Are we post abort?
+	//
+	if( _aborted ) return;
+	
 	//
 	//	Has this error been reported before?
 	//
@@ -204,52 +216,101 @@ void Errors::log_error( byte error, word arg ) {
 }
 
 //
+//	Declare a static error message that precedes the output of
+//	the error cache and the stack trace at this point.
+//
+static const char system_abort_message[] PROGMEM = "Abort status report:";
+
+//
 //	Log a terminal system error with the system.
 //
-void Errors::log_terminate( word error, const char *file_name, word line_number ) {
+void Errors::log_terminate( word error, const __FlashStringHelper *file_name, word line_number ) {
+	const char	*s, *l;
+	
+	//
+	//	Lets try to avoid aborting more than once.  We should
+	//	never get here, again.
+	//
+	while( _aborted );
+
+	//
+	//	Flag transition to abort conditions.
+	//
+	_aborted = true;
+
+	//
+	//	Shorten the full path and filename to just the name of the file.
+	//	Need to remember that we are working in PROGMEM with the filename.
+	//
+	s = (const char *)file_name;
+	for( l = s; progmem_read_byte_at( l ) != EOS; l++ ) if( progmem_read_byte_at( l ) == SLASH ) s = l+1;
+
+	//
+	//	We must also stop outputting the stack trace information
+	//	at this point, so that the output generated does not get
+	//	swamped with "follow on" messages.
+	//
+	//	Obviously if the stack trace is not compiled in this does
+	//	nothing.
+	//
+	STACK_DISPLAY( false );
+	
 	//
 	//	This is a terminal error where we are supplied the error, filename and
 	//	line number.  This routine is not expected to return, ever, and must be
-	//	cognisant that is *may* be called from within a Critical section of code.
+	//	cognisant that it *may* be called from within a Critical section of code.
 	//
 	//	For simplicity's sake, just re-enable interrupts as we will need this to
-	//	get data out of the micro controller.
+	//	get data out of the micro controller through any device.
 	//
 	Critical::enable_interrupts();
-	
+
 	//
-	//	Set console into synchronous (no data
-	//	loss) mode - only effective on the print
+	//	Set target device into synchronous (no data
+	//	loss) mode - only effective on the print*
 	//	methods.
 	//
-	console.synchronous( true );
-	
+	_output->synchronous( true );
+	_output->synchronise();
+	//_output->reset();
+
 	//
 	//	Now we start an infinite loop..
 	//
 	while( true ) {
 		byte	i, j;
+
+		//
+		//	Output header text.
+		//
+		_output->println_PROGMEM( system_abort_message );
 		
 		//
 		//	Output our point of failure.
 		//
-		console.print( (int)error );
-		console.print( TAB );
-		console.print( file_name );
-		console.print( TAB );
-		console.println( line_number );
+		_output->print( (word)error );
+		_output->print( TAB );
+		_output->print_PROGMEM( s );
+		_output->print( TAB );
+		_output->println( line_number );
 		//
 		//	Now output the error cache.
 		//
 		i = _out;
 		for( j = 0; j < _count; j++ ) {
-			console.print( (int)( _cache[ i ].error ));
-			console.print( TAB );
-			console.print( (int)( _cache[ i ].arg ));
-			console.print( TAB );
-			console.println( (int)( _cache[ i ].repeats ));
+			_output->print( (int)( _cache[ i ].error ));
+			_output->print( TAB );
+			_output->print( (int)( _cache[ i ].arg ));
+			_output->print( TAB );
+			_output->println( (int)( _cache[ i ].repeats ));
 			if(( i += 1 ) >= cache_size ) i = 0;
 		}
+		
+		//
+		//	Dump the stack (if enabled)
+		//
+		STACK_DUMP( _output );
+	
 		//
 		//	Try to delay for a fixed period.
 		//

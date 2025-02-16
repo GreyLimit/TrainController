@@ -380,11 +380,6 @@ private:
 		state_start_complete,
 
 		//
-		//		Emit a stop condition.
-		//
-		state_stop,
-
-		//
 		//		Emit target address with Read.
 		//		Emit target address with Write.
 		//		Wait for address Acknowledgement.
@@ -412,6 +407,11 @@ private:
 		//
 		state_recv_ready,
 		state_recv_byte_loop,
+
+		//
+		//		Emit a stop condition.
+		//
+		state_stop,
 
 		//
 		//	This action represent the task of sending
@@ -496,13 +496,20 @@ private:
 	//	record.
 	//
 	transaction	*_active;
+	
+	//
+	//	Declare the event/process handle to be used with the
+	//	interrupt handler.
+	//
+	static const byte irq_process	= 1;
 
 	//
-	//	Declare the flag value used to notify the task management
-	//	this object requires CPU time to process an outstanding
-	//	event and the value of the status register at that time.
+	//	Declare the flag used to link an interrrupt (and ISR call)
+	//	to the state machine that operates the TWI hardware and
+	//	a variable to hold the status register at that point
+	//	in time.
 	//
-	Signal		_flag;
+	Signal		_irq;
 	byte		_twsr;
 
 	//
@@ -537,9 +544,17 @@ private:
 		//	TWEN	1	TWI Hardware enable
 		//	TWIE	int	TWI Interrupt enable
 		//
-		TRACE_TWI( console.write( 'S' ));
-		//
 		TWCR = bit( TWIE ) | bit( TWEN ) | bit( TWSTA ) | bit( TWINT );
+	}
+
+	//
+	//	byte status( byte twsr )
+	//	------------------------
+	//
+	//	Return the "status component" of the TWSR value.
+	//
+	static inline byte status( byte twsr ) {
+		return( twsr & 0xf8 );
 	}
 
 	//
@@ -559,8 +574,6 @@ private:
 		//		progress, and becomes 1 when the
 		//		action has completed and the TWI
 		//		is ready for the next action.
-		//
-		TRACE_TWI( console.write( 'C' ));
 		//
 		return( TWCR & bit( TWINT ));
 	}
@@ -587,9 +600,6 @@ private:
 		//	TWEN	1	TWI Hardware enable
 		//	TWIE	int	TWI Interrupt enable
 		//
-		TRACE_TWI( console.write( '>' ));
-		TRACE_TWI( console.print_hex( data ));
-		//
 		TWDR = data;
 		TWCR = bit( TWIE ) | bit( TWEN ) | bit( TWINT );
 	}
@@ -604,9 +614,6 @@ private:
 	//	to the slave (true) or readin from thw slave (false).
 	//
 	static inline void send_target( byte adrs, bool writing ) {
-		//
-		TRACE_TWI( console.print_hex( adrs ));
-		TRACE_TWI( console.write( writing? 'W': 'R' ));
 		//
 		//	send_byte(( adrs << 1 )|( writing? TW_WRITE: TW_READ ));
 		//
@@ -636,8 +643,6 @@ private:
 		//	TWEN	1	TWI Hardware enable
 		//	TWIE	int	TWI Interrupt enable
 		//
-		TRACE_TWI( console.write( ack? 'A': 'N' ));
-		//
 		TWCR = bit( TWIE ) |( ack? bit( TWEA ): 0 )| bit( TWEN ) | bit( TWINT );
 	}
 
@@ -648,26 +653,10 @@ private:
 	//	Return the byte which has just been delivered to the system
 	//
 	static inline byte read_byte( void ) {
-	#ifdef ENABLE_TRACE_TWI
-		//
-		//	For debugging..
-		//
-		byte	data;
-		
-		data = TWDR;
-		//
-		TRACE_TWI( console.write( '<' ));
-		TRACE_TWI( console.print_hex( data ));
-		//
-		//	TWI Data Register, TWDR
-		//
-		return( data );
-	#else
 		//
 		//	TWI Data Register, TWDR
 		//
 		return( TWDR );
-	#endif
 	}
 
 	//
@@ -691,10 +680,30 @@ private:
 		//	TWEN	1	TWI Hardware enable
 		//	TWIE	X	TWI Interrupt enable
 		//
-		TRACE_TWI( console.write( 'P' ));
-		TRACE_TWI( console.println());
-		//
 		TWCR = bit( TWIE ) | bit( TWEN ) | bit( TWSTO ) | bit( TWINT );
+	}
+	
+	//
+	//	Disable the TWI interrupt until the next action has been
+	//	submitted.  This is used to prevent series interrupts
+	//	for the same event if the event notification and event
+	//	handler are not part of the ISR.
+	//
+	static inline void disable( void ) {
+		//
+		//	TWI Control Register, TWCR
+		//
+		//	Bit	Value	Meaning
+		//
+		//	TWINT	X	Initiate action (resets bit to 0)
+		//	TWEA	X	TWI Slave enable / (N)Ack reply
+		//	TWSTA	X	Transmit Start condition
+		//	TWSTO	X	Transmit Stop condition
+		//	TWWC	X	TWDR Write Collision detected
+		//	TWEN	X	TWI Hardware enable
+		//	TWIE	0	TWI Interrupt enable
+		//
+		TWCR = bit( TWEN );
 	}
 
 	//
@@ -822,6 +831,11 @@ public:
 	TWI( void );
 
 	//
+	//	Call this routine to make things begin.
+	//
+	void initialise( void );
+
+	//
 	//	The (6.5.1) Quick Commands
 	//	--------------------------
 	//
@@ -860,23 +874,19 @@ public:
 	bool exchange( byte adrs, byte *buffer, byte send, byte recv, Signal *flag, error_code *result );
 
 	//
-	//	void process( void )
-	//	--------------------
+	//	void process( byte handle )
+	//	---------------------------
 	//
 	//	Using the TWI state supplied drive the transaction record forward.
 	//	When the routine returns something will have been done.
 	//
-	virtual void process( void );
+	virtual void process( byte handle );
 	
 	//
-	//	void process_event( void )
-	//	--------------------------
+	//	The routine called by the ISR to indicate an interrupt
+	//	has been received.
 	//
-	//	This routine is called by the ISR to alert the driver
-	//	that a change in the TWI hardware state has taken
-	//	place.
-	//
-	void process_event( void );
+	void irq( byte twsr );
 };
 
 

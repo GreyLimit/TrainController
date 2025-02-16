@@ -13,6 +13,11 @@
 #include "Constants.h"
 #include "Driver.h"
 #include "Task.h"
+#include "Trace.h"
+
+#ifdef DEBUGGING_ENABLED
+#include "Console.h"
+#endif
 
 //
 //	A little math support.
@@ -37,32 +42,61 @@ District::District( void ) {
 //	(which will then automatically configure the
 //	driver object and initiate use of ADC manager)
 //
-bool District::assign( byte enable, byte direction, byte adc_pin, byte adc_number ) {
+void District::assign( byte enable, byte direction, byte adc_pin, byte adc_number ) {
+	
+	STACK_TRACE( "void District::assign( byte enable, byte direction, byte adc_pin, byte adc_number )" );
+
+	TRACE_DRIVER( console.print( F( "DST enable " )));
+	TRACE_DRIVER( console.println( enable ));
+	TRACE_DRIVER( console.print( F( "direction " )));
+	TRACE_DRIVER( console.println( direction ));
+	TRACE_DRIVER( console.print( F( "adc_pin " )));
+	TRACE_DRIVER( console.println( adc_pin ));
+	TRACE_DRIVER( console.print( F( "adc_number " )));
+	TRACE_DRIVER( console.println( adc_number ));
+	TRACE_DRIVER( console.print( F( "signal " )));
+	TRACE_DRIVER( console.println( _flag.identity()));
+	
 	//
-	//	Set the test pin for input.
+	//	Save details for this district.
 	//
-	_adc.configure( adc_pin, true );
+	_pin.configure( adc_pin, true );
 	_test = adc_number;
+	
 	//
 	//	Add our pins to the driver object.
 	//
-	if( !dcc_driver.add( &_driver, enable, direction )) return( false );
+	if( !dcc_driver.add( &_driver, enable, direction )) ABORT( DCC_DRIVER_CONFIGURATION_FULL );
+	
+	TRACE_DRIVER( console.print( F( "DST driver " )));
+	TRACE_DRIVER( console.println( _driver ));
 	//
-	//	Add the district to the task manager and
-	//	then initiate the first ADC reading.
+	//	Add the district to the task manager.
 	//
-	if( !task_manager.add_task( this, &_flag )) return( false );
-	if( !adc_manager.read( _test, &_flag, &_reading )) return( false );
+	if( !task_manager.add_task( this, &_flag )) ABORT( TASK_MANAGER_QUEUE_FULL );
+	
+	//
+	//	Now initiate the first ADC reading.
+	//
+	if( !adc_manager.read( _test, &_flag, &_reading )) ABORT( ADC_QUEUE_FULL );
+	
 	//
 	//	Done.
 	//
-	return( true );
 }
 
 //
 //	Task Entry point from the task manager.
 //
-void District::process( void ) {
+void District::process( UNUSED( byte handle )) {
+	
+	STACK_TRACE( "void District::process( void )" );
+
+	TRACE_DISTRICT( console.print( F( "DST driver " )));
+	TRACE_DISTRICT( console.println( _driver ));
+	TRACE_DISTRICT( console.print( F( "amps " )));
+	TRACE_DISTRICT( console.println( _reading ));
+	
 	//
 	//	We get here because a reading is available, so
 	//	add this to the average.  There are some cases
@@ -71,12 +105,16 @@ void District::process( void ) {
 	//	reset to zero for this period.
 	//
 	_average.add( _reading );
+
 	
 	//
 	//	What we do really depends on our state.
 	//
 	switch( _state ) {
 		case state_off: {
+
+			TRACE_DISTRICT( console.println( F( "DST state_off" )));
+
 			//
 			//	Nothing to do here.  The state
 			//	will be changed by an external
@@ -85,6 +123,9 @@ void District::process( void ) {
 			break;
 		}
 		case state_on: {
+
+			TRACE_DISTRICT( console.println( F( "DST state_on" )));
+
 			//
 			//	This is the "normal" state of a
 			//	district.  We should be testing to
@@ -133,6 +174,9 @@ void District::process( void ) {
 			break;
 		}
 		case state_shorted: {
+
+			TRACE_DISTRICT( console.println( F( "DST state_shorted" )));
+
 			//
 			//	We are here because there was a short but we could not
 			//	try flipping this district.  The short may have been resolved
@@ -172,6 +216,9 @@ void District::process( void ) {
 			break;
 		}
 		case state_inverted: {
+
+			TRACE_DISTRICT( console.println( F( "DST state_inverted" )));
+
 			//
 			//	We are here because we claimed the exclusive lock and
 			//	flipped the phase on this district. 
@@ -200,6 +247,9 @@ void District::process( void ) {
 			break;
 		}
 		case state_paused: {
+
+			TRACE_DISTRICT( console.println( F( "DST state_paused" )));
+
 			//
 			//	We have come in here after being paused for
 			//	a period of time.  Time to restart the district
@@ -214,7 +264,7 @@ void District::process( void ) {
 			//
 			//	Nothing we can do, this is a programmer error.
 			//
-			ABORT();
+			ABORT( PROGRAMMER_ERROR_ABORT );
 			break;
 		}
 	}
@@ -222,10 +272,16 @@ void District::process( void ) {
 	//	Pausing or reading the ADC - depends on the
 	//	new value state we are in.
 	//
-	if( _state ==  state_paused ) {
+	if( _state == state_paused ) {
+
+		TRACE_DISTRICT( console.println( F( "DST Paused" )));
+
 		time_of_day.add( DRIVER_RESET_PERIOD, &_flag );
 	}
 	else {
+
+		TRACE_DISTRICT( console.println( F( "DST Request ADC" )));
+
 		adc_manager.read( _test, &_flag, &_reading );
 	}
 }
@@ -234,6 +290,14 @@ void District::process( void ) {
 //	Control the power on this district.
 //
 void District::power( bool on ) {
+	
+	STACK_TRACE( "void District::power( bool on )" );
+	
+	TRACE_DISTRICT( console.print( F( "DST district " )));
+	TRACE_DISTRICT( console.print( _driver ));
+	TRACE_DISTRICT( console.print( F( " enabled " )));
+	TRACE_DISTRICT( console.println( on ));
+
 	dcc_driver.power( _driver, on );
 	_state = on? state_on: state_off;
 }
@@ -242,6 +306,9 @@ void District::power( bool on ) {
 //	Return current load average 0-100
 //
 byte District::load_average( void ) {
+	
+	STACK_TRACE( "byte District::load_average( void )" );
+	
 	return( (byte)mul_div<word>( _average.read( AVERAGE_CURRENT_INDEX ), 100, AVERAGE_CURRENT_LIMIT ));
 }
 
@@ -249,6 +316,9 @@ byte District::load_average( void ) {
 //	Return the state of this district
 //
 District::district_state District::state( void ) {
+	
+	STACK_TRACE( "District::district_state District::state( void )" );
+	
 	return( _state );
 }
 

@@ -38,25 +38,38 @@
 #define CONSOLE_INPUT	32
 #endif
 #ifndef CONSOLE_OUTPUT
-#define CONSOLE_OUTPUT	128
+#define CONSOLE_OUTPUT	250
 #endif
+
+//
+//	Declare the Console class on top of the USART_IO class.
+//
+class Console : public USART_IO {
+private:
+	//
+	//	Declare the IO buffers we will be using.
+	//
+	Byte_Queue_Signal< CONSOLE_INPUT >	_in;
+	Byte_Queue< CONSOLE_OUTPUT >		_out;
+	
+public:
+	//
+	//	Declare the initialisation routine.
+	//
+	void initialise( byte dev, USART_line_speed speed );
+
+	//
+	//	Provide the mechanism to access the input
+	//	queue data ready flag.
+	//
+	Signal *control_signal( void );
+};
 
 //
 //	The CONSOLE device
 //	==================
 //
-extern USART_IO		console;
-
-//
-//	The call to initialise it.
-//
-extern void initialise_console( USART_line_speed speed );
-
-//
-//	Get address of the control gate.
-//
-extern Signal *console_control( void );
- 
+extern Console		console;
 
 #endif
 

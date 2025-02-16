@@ -21,6 +21,11 @@
 #include "Function.h"
 #include "TOD.h"
 #include "Task.h"
+#include "Trace.h"
+
+#ifdef DEBUGGING_ENABLED
+#include "Console.h"
+#endif
 
 //
 //	Define a set of single character symbols to represent
@@ -41,6 +46,9 @@
 //	Redrawing routines.
 //
 void HCI::redraw_object_area( void ) {
+
+	STACK_TRACE( "void HCI::redraw_object_area( void )" );
+
 	char	buffer[ LCD_DISPLAY_STATUS_WIDTH ];
 
 	//
@@ -139,6 +147,9 @@ void HCI::redraw_object_area( void ) {
 
 
 void HCI::redraw_menu_area( void ) {
+
+	STACK_TRACE( "void HCI::redraw_menu_area( void )" );
+
 	for( byte r = 0; r < ITEM_COUNT; r++ ) {
 		_display.set_posn( r, LCD_DISPLAY_MENU_COLUMN );
 		_display.write_PROGMEM( _this_menu->item[ r ].text, MENU_ITEM_SIZE );
@@ -151,6 +162,8 @@ void HCI::redraw_page_line( byte r ) {
 #if LCD_DISPLAY_PAGE_WIDTH != 10
 #error "This routine needs hand coding for new display size"
 #endif
+
+	STACK_TRACE( "void HCI::redraw_page_line( byte r )" );
 
 	char		line[ LCD_DISPLAY_PAGE_WIDTH ];
 	object_data	*o;
@@ -167,6 +180,7 @@ void HCI::redraw_page_line( byte r ) {
 		//	Mobile object.
 		//
 		line[ 1 ] = LCD_CAB_OBJECT;	// A "Cab" Object
+		
 		//
 		//	Layout:	A=Address, D=Direction, S=Speed
 		//
@@ -218,6 +232,9 @@ void HCI::redraw_page_line( byte r ) {
 }
 
 void HCI::redraw_page_area( void ) {
+
+	STACK_TRACE( "void HCI::redraw_page_area( void )" );
+
 	for( byte r = 0; r < ITEM_COUNT; r++ ) redraw_page_line( r );
 }
 
@@ -225,6 +242,9 @@ void HCI::redraw_page_area( void ) {
 //	The update a line of the LCD with the status of the DCC Generator.
 //
 void HCI::update_dcc_status_line( byte line ) {
+
+	STACK_TRACE( "void HCI::update_dcc_status_line( byte line )" );
+
 	char		buffer[ LCD_DISPLAY_STATUS_WIDTH ];
 
 	if( !_display_status ) return;
@@ -290,12 +310,12 @@ void HCI::update_dcc_status_line( byte line ) {
 		}
 		case 2: {
 			//
-			//	Row 1, (P)ower status and (F)ree bit buffers
+			//	Row 1, Active (Z)one and (F)ree bit buffers
 			//
-			buffer[ 1 ] = 'P';
+			buffer[ 1 ] = 'Z';
 			buffer[ 2 ] = '0' + districts.zone();
 			buffer[ 3 ] = 'F';
-			if( !backfill_byte_to_text( buffer+4, LCD_DISPLAY_STATUS_WIDTH-4, dcc_generator.free_buffers())) {
+			if( !backfill_byte_to_text( buffer+4, LCD_DISPLAY_STATUS_WIDTH-4, (int)stats.free_buffers())) {
 				memset( buffer+4, HASH, LCD_DISPLAY_STATUS_WIDTH-4 );
 			}
 			_display.set_posn( 2, LCD_DISPLAY_STATUS_COLUMN );
@@ -312,10 +332,12 @@ void HCI::update_dcc_status_line( byte line ) {
 			if( !backfill_int_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-3, (int)stats.packets_sent())) {
 				memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
 			}
+			
 			//
 			//	Spinner, so we can see that the firmware is still running.
 			//
 			buffer[ LCD_DISPLAY_STATUS_WIDTH-1 ] = ( spinner = !spinner )? SPACE: '.';
+			
 			//
 			//	Place the data.
 			//
@@ -333,6 +355,9 @@ void HCI::update_dcc_status_line( byte line ) {
 }
 
 void HCI::update_dcc_status( void ) {
+
+	STACK_TRACE( "void HCI::update_dcc_status( void )" );
+
 	//
 	//	Just push out all lines.
 	//
@@ -354,6 +379,9 @@ void HCI::update_dcc_status( void ) {
 //
 
 void HCI::process_menu_option( byte m ) {
+
+	STACK_TRACE( "void HCI::process_menu_option( byte m )" );
+
 	switch( progmem_read_byte( _this_menu->item[ m ].action )) {
 		case ACTION_NEW_MOBILE: {
 			//
@@ -470,13 +498,25 @@ void HCI::process_menu_option( byte m ) {
 }
 
 void HCI::user_key_event( bool down, char key ) {
+
+	STACK_TRACE( "void HCI::user_key_event( bool down, char key )" );
+
+	TRACE_HCI( console.print( F( "HCI key " )));
+	TRACE_HCI( console.print( key ));
+	TRACE_HCI( console.print( F( " down " )));
+	TRACE_HCI( console.println( down ));
+
 	byte	i, j;
-	
+
+	//
+	//	PAGE Shift key?
+	//
 	if( key == LAYOUT_PAGE_SHIFT ) {
 		//
 		//	Force reset of input mode.
 		//
 		_input_mode = false;
+		
 		//
 		//	Modify the page shift status.
 		//
@@ -488,11 +528,16 @@ void HCI::user_key_event( bool down, char key ) {
 		}
 		return;
 	}
+
+	//
+	//	MENU Shift key?
+	//
 	if( key == LAYOUT_MENU_SHIFT ) {
 		//
 		//	Force reset of input mode.
 		//
 		if( down ) _input_mode = false;
+		
 		//
 		//	Modify the menu shift status.
 		//
@@ -510,16 +555,21 @@ void HCI::user_key_event( bool down, char key ) {
 	//
 	if( _menu_shift && _page_shift ) return;
 
+	//
+	//	Alphabetic LETTER
+	//
 	if( LAYOUT_IS_LETTER( key )) {
 		//
 		//	Force reset of input mode.
 		//
 		_input_mode = false;
+		
 		//
-		//	We are only concerned if the key pressed, only
-		//	when released.
+		//	We are only concerned if the key pressed has
+		//	been released.
 		//
 		if( down ) return;
+		
 		//
 		//	A letter has been pressed.  What we do depends on if
 		//	there is a shift key down.
@@ -527,6 +577,7 @@ void HCI::user_key_event( bool down, char key ) {
 		//	Convert letter to index (0..N-1)
 		//
 		i = LAYOUT_LETTER_INDEX( key );
+		
 		//
 		//	deal with shifted options first.
 		//
@@ -560,17 +611,23 @@ void HCI::user_key_event( bool down, char key ) {
 		}
 		return;
 	}
-	
-	if( !LAYOUT_IS_NUMBER( key )) return;
+
 	//
-	//	For the moment we are only interested in the function
-	//	key being released.
+	//	Pretty sure this test is actually redundant.
+	//
+	if( !LAYOUT_IS_NUMBER( key )) return;
+
+	//
+	//	For the moment we are only interested when the numeric
+	//	key is being released.
 	//
 	if( down ) return;
+	
 	//
 	//	Get the key number index.
 	//
 	i = LAYOUT_NUMBER_INDEX( key );
+	
 	//
 	//	Are we in input mode?
 	//
@@ -612,10 +669,18 @@ void HCI::user_key_event( bool down, char key ) {
 			//
 			if( _menu_shift ) i += 10;
 			if( _page_shift ) i += 20;
+
 			//
-			//	Toggle function.
+			//	Ignore any combination that gives an
+			//	invalid function key number.
+			//
+			if( i > DCC_Constant::maximum_func_number ) return;
+			
+			//
+			//	Get function status and toggle it.
 			//
 			j = function_cache.get( _this_object->adrs, i, 1 ) ^ 1;
+			
 			//
 			//	Apply and update status page (optionally).
 			//
@@ -626,7 +691,7 @@ void HCI::user_key_event( bool down, char key ) {
 				if( !_display_status ) redraw_object_area();
 			}
 		}
-		else {
+		else if( _this_object->adrs < 0 ) {
 			bool	s;
 
 			//
@@ -652,16 +717,23 @@ void HCI::user_key_event( bool down, char key ) {
 //	For accessories it reverses the position.
 //
 void HCI::user_button_pressed( UNUSED( word duration )) {
+
+	STACK_TRACE( "void HCI::user_button_pressed( UNUSED( word duration ))" );
+
 	//
 	//	If we are in input mode we do nothing.
 	//
 	if( _input_mode ) return;
+	
 	//
 	//	Now act accordingly.
 	//
 	if( _this_object->adrs > 0 ) {
 		byte	s;
 		bool	d;
+
+		TRACE_HCI( console.print( F( "HCI rev mob " )));
+		TRACE_HCI( console.println( _this_object->adrs ));
 		
 		//
 		//	Mobile decoder, will be simple; change direction
@@ -686,6 +758,9 @@ void HCI::user_button_pressed( UNUSED( word duration )) {
 	}
 	else if( _this_object->adrs < 0 ) {
 		bool	s;
+		
+		TRACE_HCI( console.print( F( "HCI rev acc " )));
+		TRACE_HCI( console.println( -_this_object->adrs ));
 		
 		//
 		//	Accessory needs flipping.
@@ -714,6 +789,12 @@ void HCI::user_button_pressed( UNUSED( word duration )) {
 //	is only applicable to mobile decoders and their speed.
 //
 void HCI::user_rotary_movement( sbyte change ) {
+
+	STACK_TRACE( "void HCI::user_rotary_movement( sbyte change )" );
+
+	TRACE_HCI( console.print( F( "HCI rotary " )));
+	TRACE_HCI( console.println( change ));
+
 	//
 	//	If we are in input mode we do nothing.
 	//
@@ -721,13 +802,16 @@ void HCI::user_rotary_movement( sbyte change ) {
 	//		selected number up or down .. possibly?
 	//
 	if( _input_mode ) return;
+
 	//
 	//	Now act accordingly.
 	//
 	if( _this_object->adrs > 0 ) {
 		byte	s, t;
 		bool	d;
-		
+
+		TRACE_HCI( console.println( F( "HCI mobile" )));
+
 		//
 		//	We have a mobile decoder, huzzar!
 		//
@@ -739,18 +823,20 @@ void HCI::user_rotary_movement( sbyte change ) {
 			s = 0;
 			d = true;
 		}
+
 		//
 		//	Adjust the speed appropiately, and if changes
 		//	are valid save the new speed and issue the DCC
 		//	command.
 		//
 		t = s + change;
+
 		//
 		//	Correct any overflow from the calculation.  We are
 		//	being a little cocky here; if the calculation
 		//	under flows (i.e. speed reduced below 0) the unsigned
 		//	type of t means this becomes a large positive
-		//	so the correct we make is based on the direction
+		//	so the correction we make is based on the direction
 		//	the speed was adjusted.
 		//
 		//	Also note that, at this point in the code, we are
@@ -759,6 +845,7 @@ void HCI::user_rotary_movement( sbyte change ) {
 		//	of speed values (0,2-127).
 		//
 		if( t > maximum_speed ) t = ( change < 0 )? minimum_speed: maximum_speed;
+
 		//
 		//	Have we changed the speed?  If so then do it.
 		//
@@ -769,6 +856,7 @@ void HCI::user_rotary_movement( sbyte change ) {
 			//
 			s = t;
 			if( t ) t++;
+
 			//
 			//	Initiate DCC command.
 			//
@@ -785,6 +873,9 @@ void HCI::user_rotary_movement( sbyte change ) {
 //	Called to check keypad for input
 //
 void HCI::keypad_reader( void ) {
+
+	STACK_TRACE( "void HCI::keypad_reader( void )" );
+
 	byte	key;
 
 	if(( key = _keypad.read())) {
@@ -794,6 +885,11 @@ void HCI::keypad_reader( void ) {
 		//	Something has changed .. decode and process.
 		//
 		if(( down = BOOL( key & Keypad::pressed ))) key &= ~Keypad::pressed;
+
+		TRACE_HCI( console.print( F( "key " )));
+		TRACE_HCI( console.print( (char)key ));
+		TRACE_HCI( console.println( down? F( " down" ): F( " up" )));
+
 		//
 		//	... process
 		//
@@ -805,116 +901,40 @@ void HCI::keypad_reader( void ) {
 //	Called to process rotary actions.
 //
 void HCI::rotary_updater( void ) {
+
+	STACK_TRACE( "void HCI::rotary_updater( void )" );
+
 	word	d;
+	sbyte	m;
 	
 	if(( d = _dial.pressed())) user_button_pressed( d );
-	user_rotary_movement( _dial.movement());
+	if(( m = _dial.movement())) user_rotary_movement( m );
 }
 
+void HCI::process( byte handle ) {
 
-//
-//	Tying everything together.
-//	==========================
-//
-//	The "software" model that the firmware rests upon is not
-//	complex enough to manage multiple, but different, scheduled
-//	calls to the same object.
-//
-//	To to *properly* configure and run the HCI each of the various
-//	elements requires its own object with its own individual
-//	schedule attached.
-//
+	STACK_TRACE( "void HCI::process( byte handle )" );
 
-//
-//	Declare the HCI object itself, the following classes will
-//	be required to directly act upon it.
-//
-HCI hci_control;
-
-
-//
-//	The LCD updating object
-//	-----------------------
-//
-class LCD_Updater : public Task_Entry {
-private:
-	//
-	//	The line we update next.
-	//
-	byte	_line = 0;
-	
-	//
-	//	Our Signal variable.
-	//
-	Signal	_flag;
-	
-public:
-	void initialise( void ) {
-		if( !event_timer.delay_event( MSECS( LINE_REFRESH_INTERVAL ), &_flag, true )) {
-			errors.log_error( HCI_SCHEDULE_FAILED, 11 );
+	switch( handle ) {
+		case rotary_handle: {
+			rotary_updater();
+			break;
 		}
-		if( !task_manager.add_task( this, &_flag )) {
-			errors.log_error( HCI_SCHEDULE_FAILED, 12 );
+		case keypad_handle: {
+			keypad_reader();
+			break;
+		}
+		case display_handle: {
+			update_dcc_status_line( _display_line++ );
+			if( _display_line >= LCD_DISPLAY_ROWS ) _display_line = 0;
+			break;
+		}
+		default: {
+			ABORT( PROGRAMMER_ERROR_ABORT );
+			break;
 		}
 	}
-	virtual void process( void ) {
-		hci_control.update_dcc_status_line( _line++ );
-		if( _line >= LCD_DISPLAY_ROWS ) _line = 0;
-	}
-};
-static LCD_Updater lcd_updater;
-
-//
-//	The Keypad Reading object
-//	-------------------------
-//
-class Keypad_Scanner : public Task_Entry {
-private:
-	//
-	//	Our Signal variable.
-	//
-	Signal	_flag;
-	
-public:
-	void initialise( void ) {
-		if( !event_timer.delay_event( MSECS( KEYPAD_READING_INTERVAL ), &_flag, true )) {
-			errors.log_error( HCI_SCHEDULE_FAILED, 21 );
-		}
-		if( !task_manager.add_task( this, &_flag )) {
-			errors.log_error( HCI_SCHEDULE_FAILED, 22 );
-		}
-	}
-	virtual void process( void ) {
-		hci_control.keypad_reader();
-	}
-};
-static Keypad_Scanner keypad_scanner;
-
-//
-//	The Rotary control updating object.
-//	-----------------------------------
-//
-class Rotary_Scanner : public Task_Entry {
-private:
-	//
-	//	Our Signal variable.
-	//
-	Signal	_flag;
-	
-public:
-	void initialise( void ) {
-		if( !event_timer.delay_event( MSECS( ROTARY_UPDATE_PERIOD ), &_flag, true )) {
-			errors.log_error( HCI_SCHEDULE_FAILED, 31 );
-		}
-		if( !task_manager.add_task( this, &_flag )) {
-			errors.log_error( HCI_SCHEDULE_FAILED, 32 );
-		}
-	}
-	virtual void process( void ) {
-		hci_control.rotary_updater();
-	}
-};
-static Rotary_Scanner rotary_scanner;
+}
 
 //
 //	Organise the HCI into action!
@@ -922,11 +942,21 @@ static Rotary_Scanner rotary_scanner;
 //	This still feels too complex but is better than it was before!
 //
 void HCI::initialise( void ) {
+
+	STACK_TRACE( "void HCI::initialise( void )" );
+
+	TRACE_HCI( console.print( F( "HCI display flag " )));
+	TRACE_HCI( console.println( _display_flag.identity()));
+	TRACE_HCI( console.print( F( "HCI keypad flag " )));
+	TRACE_HCI( console.println( _keypad_flag.identity()));
+	TRACE_HCI( console.print( F( "HCI rotary flag " )));
+	TRACE_HCI( console.println( _rotary_flag.identity()));
+
 	//
 	//	Set up all the elements that form to HCI control.
 	//
 	_lcd.initialise( LCD_DISPLAY_ADRS, LCD_DISPLAY_ROWS, LCD_DISPLAY_COLS );
-	_display.initialise( &_lcd, _frame_buffer, LCD_FRAME_BUFFER, LCD_DISPLAY_ROWS, LCD_DISPLAY_COLS );
+	_display.initialise( &_lcd );
 	_dial.initialise( ROTARY_A, ROTARY_B, ROTARY_BUTTON );
 	_keypad.initialise( KEYPAD_ADDRESS );
 
@@ -967,10 +997,29 @@ void HCI::initialise( void ) {
 	//
 	//	Now kick off the events processing.
 	//
-	lcd_updater.initialise();
-	keypad_scanner.initialise();
-	rotary_scanner.initialise();
+	_display_line = 0;
+	if( !event_timer.delay_event( MSECS( LINE_REFRESH_INTERVAL ), &_display_flag, true )) ABORT( EVENT_TIMER_QUEUE_FULL );
+	if( !task_manager.add_task( this, &_display_flag, display_handle )) ABORT( TASK_MANAGER_QUEUE_FULL );
+
+	//
+	//	Initialise the keypad scanning code.
+	//
+	if( !event_timer.delay_event( MSECS( KEYPAD_READING_INTERVAL ), &_keypad_flag, true )) ABORT( EVENT_TIMER_QUEUE_FULL );
+	if( !task_manager.add_task( this, &_keypad_flag, keypad_handle )) ABORT( TASK_MANAGER_QUEUE_FULL );
+
+	//
+	//	Initialise the rotary dial control.
+	//
+	if( !event_timer.delay_event( MSECS( ROTARY_UPDATE_PERIOD ), &_rotary_flag, true )) ABORT( EVENT_TIMER_QUEUE_FULL );
+	if( !task_manager.add_task( this, &_rotary_flag, rotary_handle )) ABORT( TASK_MANAGER_QUEUE_FULL );
 }
+
+
+//
+//	Declare the HCI object itself.
+//
+HCI hci_control;
+
 
 //
 //	EOF

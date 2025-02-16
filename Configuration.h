@@ -79,7 +79,7 @@
 //	-------	--------	------		----
 //	D0/RX	PD0		Serial		UART Rx
 //	D1/TX	PD1		Serial		UART Tx
-//	D2	PD2		
+//	D2	PD2		GPIO		DCC clock output
 //	D3	PD3		Motor Shield	SHIELD_DRIVER_A_ENABLE
 //	D4	PD4		
 //	D5	PD5		Rotary Control	Button
@@ -115,6 +115,27 @@
 //
 
 //
+//	Serial Host Connectivity
+//	========================
+//
+
+//
+//	Define the Speed and buffer size used when accessing the
+//	serial port.
+//
+//	Example baud rates:
+//
+//		9600 14400 19200 38400 57600 115200
+//
+//	The new USART module uses specific constant values for
+//	the various supported baud rates.  These are all preceded
+//	with a 'B'.
+//
+#ifndef SERIAL_BAUD_RATE
+#define SERIAL_BAUD_RATE	B115200
+#endif
+
+//
 //	The I2C bus frequency
 //	=====================
 //
@@ -133,7 +154,7 @@
 //	ROTARY CONTROLLER
 //	=================
 //
-//	Definition allowing for "teaking" of the pin allocations in
+//	Definition allowing for "tweaking" of the pin allocations in
 //	the event that the hardware installation requires the reversal
 //	of some connections.
 //
@@ -207,12 +228,6 @@
 #define LCD_DISPLAY_ROWS	4
 #define LCD_DISPLAY_COLS	20
 #define LCD_DISPLAY_ADRS	0x27
-
-//
-//	Define the total number of characters on the LCD - the
-//	size of the buffer space required for it.
-//
-#define LCD_FRAME_BUFFER	(LCD_DISPLAY_COLS*LCD_DISPLAY_ROWS)
 
 //
 //	Define the macro _LCD_USE_READ_BUSY_READY_ to cause the LCD

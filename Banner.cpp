@@ -28,8 +28,12 @@ void serial_banner( Byte_Queue_API *console ) {
 	bool	s;
 
 	s = console->synchronous( true );
+	console->println();
 	console->println_PROGMEM( splash1 );
-	console->println_PROGMEM( splash2 );
+	console->print_PROGMEM( splash2 );
+		console->print( SPACE );
+		console->print((word)( F_CPU / 1000000L ));
+		console->println( F( "MHz" ));
 	console->println_PROGMEM( splash3 );
 	console->println_PROGMEM( splash4 );
 	console->synchronous( s );

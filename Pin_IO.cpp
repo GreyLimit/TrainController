@@ -8,6 +8,10 @@
 //
 #include "Pin_IO.h"
 
+//
+//	Device Hardware Addresses.
+//	==========================
+//
 
 //
 //	Declare the AVR GPIO address lookup table.
@@ -67,6 +71,35 @@ static GPIO_Registers *GPIO_address( byte instance ) {
 	if( instance >= sizeof( gpio_addresses )) return( NULL );
 	return( progmem_read_address( gpio_addresses[ instance ]));
 }
+
+//
+//	Device Hardware Characteristics
+//	===============================
+//
+//	The "database" of possible pin roles needs to encapsulate a
+//	couple of functional factors over what a pin can be used for
+//	(see Pin_Role).  This is that an MCU might have multiple
+//	separate hardware devices performing a ggiven role, and that
+//	each of these devices might be presented at different locations
+//	on the pins of the MCU.
+//
+//	Therefore when a device is required it needs to be specified
+//	by the namture of the device (Pin_Role), the instance of this
+//	device (0,1,2...) and the possible presentation locations for
+//	this device (again, 0,1,2...).
+//
+
+//
+//	How is the database organised?  Essentially, rather than working
+//	backwards for a pin towards a role/device which might be using
+//	it, the database starts with a role and works towards the pins.
+//
+//	Declare a structure that is the head for the data for a specific
+//	role
+//
+//	JEFF
+// 
+
 
 //
 //	Define the static, program memory based database of Platform

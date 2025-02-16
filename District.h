@@ -94,7 +94,7 @@ private:
 	//	Keep a copy of the ADC pin we need to check for the
 	//	power monitoring facility.
 	//
-	Pin_IO				_adc;
+	Pin_IO				_pin;
 	byte				_test;
 
 	//
@@ -106,7 +106,7 @@ private:
 	//
 	//	Where we gather our readings over time.
 	//
-	Average<compounded_values>	_average;
+	Average<compounded_values,word>	_average;
 
 	//
 	//	Declare a single Gateway, common to all defined
@@ -127,12 +127,12 @@ public:
 	//	(which will then automatically configure the
 	//	driver object and initiate use of ADC manager)
 	//
-	bool assign( byte enable, byte direction, byte adc_pin, byte adc_number );
+	void assign( byte enable, byte direction, byte adc_pin, byte adc_number );
 
 	//
 	//	Task Entry point from the task manager.
 	//
-	virtual void process( void );
+	virtual void process( byte handle );
 
 	//
 	//	Control the power on this district.

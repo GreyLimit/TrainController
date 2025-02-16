@@ -5,9 +5,15 @@
 //	The implementation of the time of day tracker.
 //
 
+#include "Code_Assurance.h"
 #include "TOD.h"
 #include "Task.h"
 #include "Clock.h"
+#include "Critical.h"
+
+#ifdef DEBUGGING_ENABLED
+#include "Console.h"
+#endif
 
 //
 //	Declare our limits array.
@@ -20,7 +26,7 @@ const byte TOD::limit[ TOD::stages ] PROGMEM = {
 };
 
 //
-//	Constructor
+//	Constructor and initialise routine.
 //
 TOD::TOD( void ) {
 	//
@@ -42,19 +48,31 @@ TOD::TOD( void ) {
 //	Call to initialise the TOD system within the Clock and
 //	Task sub-system.
 //
-void TOD::start( void ) {
-	event_timer.delay_event( MSECS( 1000 ), &_flag, true );
-	task_manager.add_task( this, &_flag );
+void TOD::initialise( void ) {
+	
+	STACK_TRACE( "void TOD::initialise( void )" );
+
+	TRACE_TOD( console.print( F( "TOD flag " )));
+	TRACE_TOD( console.println( _flag.identity()));
+	
+	if( !task_manager.add_task( this, &_flag )) ABORT( TASK_MANAGER_QUEUE_FULL );
+	if( !event_timer.delay_event( MSECS( 1000 ), &_flag, true )) ABORT( EVENT_TIMER_QUEUE_FULL );
 }
 
 //
 //	Provide access to the TOD data.
 //
 byte TOD::read( byte index ) {
+	
+	STACK_TRACE( "byte TOD::read( byte index )" );
+	
 	if( index < stages ) return( _stage[ index ]);
 	return( 0 );
 }
 bool TOD::write( byte index, byte value ) {
+	
+	STACK_TRACE( "bool TOD::write( byte index, byte value )" );
+	
 	if(( index < stages )&&( value < progmem_read_byte( limit[ index ]))) {
 		_stage[ index ] = value;
 		return( true );
@@ -69,6 +87,16 @@ bool TOD::write( byte index, byte value ) {
 //	based clock scheduling.
 //
 bool TOD::add( word duration, Signal *flag ) {
+	
+	STACK_TRACE( "bool TOD::add( word duration, Signal *flag )" );
+
+	ASSERT( flag != NIL( Signal ));
+	
+	TRACE_TOD( console.print( F( "TOD delay " )));
+	TRACE_TOD( console.print( duration ));
+	TRACE_TOD( console.print( F( " flag " )));
+	TRACE_TOD( console.println( flag->identity()));
+
 	pending	*ptr, **adrs, *look;
 
 	if(( ptr = _free )) {
@@ -95,9 +123,11 @@ bool TOD::add( word duration, Signal *flag ) {
 //	The TASK entry point, called each time the flag is
 //	set true by the clock system.
 //
-void TOD::process( void ) {
+void TOD::process( UNUSED( byte handle )) {
+	STACK_TRACE( "void TOD::process( byte handle )" );
+
 	pending	*ptr;
-	
+
 	//
 	//	Called every second to update the TOD and look
 	//	at the pending list.
@@ -110,14 +140,39 @@ void TOD::process( void ) {
 	}
 
 	//
-	//	Check out the pending actions.
+	//	Is there a list of pending actions awaiting our attention.
+	//
+	if( _active == NIL( pending )) {
+
+		TRACE_TOD( console.println( F( "TOD queue empty" )));
+		
+		return;
+	}
+
+	//
+	//	Now we check off all actions with no pending time left
+	//	and execute their signal.
 	//
 	while(( ptr = _active )) {
 		//
-		//	Has this counter run out?  If not (ie still not zero)
-		//	then exit this loop.
+		//	Has this counter run out?  If not (not zero)
+		//	then reduce and leave the loop.
 		//
-		if( ptr->left-- ) break;
+		if( ptr->left ) {
+
+			TRACE_TOD( console.print( F( "TOD pending " )));
+			TRACE_TOD( console.println( ptr->left ));
+			
+			//
+			//	Yes!  Decrease it and finish.
+			//
+			_active->left -= 1;
+			break;
+		}
+
+		TRACE_TOD( console.print( F( "TOD release flag " )));
+		TRACE_TOD( console.println( ptr->flag->identity()));
+
 		//
 		//	Counter was zero, so release the flag and return the
 		//	record to the free list.
@@ -127,19 +182,36 @@ void TOD::process( void ) {
 		ptr->next = _free;
 		_free = ptr;
 	}
+
+	TRACE_TOD( console.println( F( "TOD done" )));
+
+	//
+	//	Done.
+	//
 }
 
 //
 //	A human scale inline delay routine.
 //
 void TOD::inline_delay( word seconds ) {
+	STACK_TRACE( "void TOD::inline_delay( word seconds )" );
+
 	Signal	flag;
 
-	if( add( seconds, &flag )) {
-		while( !flag.acquire()) task_manager.pole_task();
-	}
-	else {
-		errors.log_error( TIME_OF_DAY_QUEUE_FULL, 0 );
+	TRACE_TOD( console.print( F( "TOD inline delay " )));
+	TRACE_TOD( console.print( seconds ));
+	TRACE_TOD( console.print( F( " flag " )));
+	TRACE_TOD( console.println( flag.identity()));
+
+	ASSERT( Critical::normal_code());
+
+	if( seconds > 0 ) {
+		if( add( seconds, &flag )) {
+			while( !flag.acquire()) task_manager.pole_task();
+		}
+		else {
+			errors.log_error( TIME_OF_DAY_QUEUE_FULL, 0 );
+		}
 	}
 }
 

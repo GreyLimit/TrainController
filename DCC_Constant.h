@@ -72,7 +72,7 @@ public:
 	//
 	static const byte	function_off		= 0;
 	static const byte	function_on		= 1;
-	static const byte	function_toggle		= 2;		// This specific to this firmware.
+	static const byte	function_toggle		= 2;		// This is specific to this firmware.
 
 	//
 	//	Data verification routines
@@ -151,15 +151,13 @@ public:
 	//
 	static word internal_acc_adrs( word target ) {
 
-		ASSERT( target >= minimum_ext_address );
-		ASSERT( target <= maximum_ext_address );
+		ASSERT(( target >= minimum_ext_address )&&( target <= maximum_ext_address ));
 
 		return((( target - 1 ) >> 2 ) + 1 );
 	}
 	static byte internal_acc_subadrs( word target ) {
 
-		ASSERT( target >= minimum_ext_address );
-		ASSERT( target <= maximum_ext_address );
+		ASSERT(( target >= minimum_ext_address )&&( target <= maximum_ext_address ));
 
 		return(( target - 1 ) & 3 );
 	}

@@ -13,8 +13,7 @@
 #include "Configuration.h"
 #include "Task_Entry.h"
 #include "Signal.h"
-#include "Console.h"
-#include "Protocol.h"
+#include "Byte_Queue.h"
 
 //
 //	Define a list of Error numbers that this code could report
@@ -44,18 +43,23 @@
 //	DCC command parameter errors.
 //
 #define INVALID_DCC_COMMAND		20
-#define INVALID_ARGUMENT_COUNT		21
-#define INVALID_ADDRESS			22
-#define INVALID_SPEED			23
-#define INVALID_DIRECTION		24
-#define INVALID_STATE			25
-#define INVALID_CV_NUMBER		26
-#define INVALID_FUNC_NUMBER		27
-#define INVALID_BIT_NUMBER		28
-#define INVALID_BIT_VALUE		29
-#define INVALID_BIT_MASK		30
-#define INVALID_BYTE_VALUE		31
-#define INVALID_WORD_VALUE		32
+#define INVALID_COMMAND_FORMAT		21
+#define INVALID_ARGUMENT_COUNT		22
+#define INVALID_ADDRESS			23
+#define INVALID_SPEED			24
+#define INVALID_DIRECTION		25
+#define INVALID_STATE			26
+#define INVALID_CV_NUMBER		27
+#define INVALID_FUNC_NUMBER		28
+#define INVALID_BIT_NUMBER		29
+#define INVALID_BIT_VALUE		30
+#define INVALID_BIT_MASK		31
+#define INVALID_BYTE_VALUE		32
+#define INVALID_WORD_VALUE		33
+#define INVALID_POWER_ZONE		34
+#define INVALID_ARGUMENT_RANGE		35
+#define INVALID_BITMAP_VALUE		36
+#define INVALID_CONSTANT		37
 
 //
 //	Operational errors.
@@ -73,12 +77,15 @@
 #define TRANSMISSION_TABLE_FULL		51
 #define TRANSMISSION_PENDING_FULL	52
 #define TRANSMISSION_RECORD_EMPTY	53
-#define BIT_TRANS_OVERFLOW		54
+#define TRANSMISSION_BIT_OVERFLOW	54
 
 //
 //	Process reporting errors
 //
-#define COMMAND_REPORT_FAIL		60
+#define COMMAND_FORMAT_FAIL		60
+#define COMMAND_REPORT_FAIL		61
+#define COMMAND_TRANSMISSION_FAILED	62
+#define COMMAND_EXECUTION_FAILED	63
 
 //
 //	Errors relating to the (now missing)
@@ -97,14 +104,44 @@
 #define CV_INDEX_ERROR			77
 
 //
-//	HCI scheduling failed.
+//	Unexpected TWI state change
 //
-#define HCI_SCHEDULE_FAILED		89
+#define TWI_STATE_CHANGE		80
+
+//
+//	TWI receives too much data
+//
+#define TWI_READ_DATA_OVERFLOW		81
 
 //
 //	Rotary button queue full
 //
-#define ROTARY_BUTTON_QUEUE_FULL	90
+#define ROTARY_BUTTON_QUEUE_FULL	82
+
+//
+//	DCC Driver configuration overflow.
+//
+#define DCC_DRIVER_CONFIGURATION_FULL	83
+
+//
+//	Error with signal range.
+//
+#define SIGNAL_RANGE_ERROR		87
+
+//
+//	Unexpected ADC interrupt.
+//
+#define ADC_UNEXPECTED_RESULT		88
+
+//
+//	ADC queue full.
+//
+#define ADC_QUEUE_FULL			89
+
+//
+//	Task Manager queue is full!
+//
+#define TASK_MANAGER_QUEUE_FULL		90
 
 //
 //	Time of Day queue full
@@ -136,11 +173,38 @@
 //
 #define ERRORS_ERR_OVERFLOW		96
 #define USART_IO_ERR_DROPPED		97
+
 //
-//	Code Assurance errors
+//	Heap allocation errors
 //
-#define CODE_ASSURANCE_ERR_ASSERT	98
-#define CODE_ASSURANCE_ERR_ABORT	99
+#define HEAP_ERR_NO_ERROR		100
+#define HEAP_ERR_OUT_OF_MEMORY		101
+#define HEAP_ERR_INVALID_ADRS		102
+#define HEAP_ERR_DUP_DEALLOCATE		103
+#define HEAP_ERR_INVALID_ALLOCATION	104
+
+//
+//	SPI related errors.
+//
+#define SPI_TARGET_TABLE_FULL		110
+#define SPI_INVALID_CLOCK_SPEED		111
+#define SPI_QUEUE_FULL			112
+
+//
+//	Clock errors
+//
+#define CLOCK_INVALID_DIVIDER		120
+#define CLOCK_ISR_DROPPED		121
+
+//
+//	Programming error abort.
+//
+#define PROGRAMMER_ERROR_ABORT		200
+
+//
+//	Code Assurance error
+//
+#define CODE_ASSURANCE_ERR_ASSERT	201
 
 
 //
@@ -171,9 +235,21 @@ private:
 			_out;
 			
 	//
+	//	Where will we send them?
+	//
+	Byte_Queue_API	*_output;
+			
+	//
 	//	The task conrtol signal.
 	//
 	Signal		_errors;
+
+	//
+	//	This is system aborted flag, and is used to stop
+	//	errors generated after a system abort from messing up
+	//	any data in place at the time of the abort.
+	//
+	bool		_aborted;
 	
 	//
 	//	Drop the next error.
@@ -190,14 +266,14 @@ public:
 	//
 	//	The initialisation routine for the errors object
 	//
-	void initialise( void );
+	void initialise( Byte_Queue_API	*to );
 	
 	//
 	//	The task manager calls this routine to handle the
 	//	output of errors.  This is controlled by the "_errors"
 	//	Signal.
 	//
-	virtual void process( void );
+	virtual void process( byte handle );
 	
 	//
 	//	Log an error with the system
@@ -207,7 +283,7 @@ public:
 	//
 	//	Log a terminal system error with the system.
 	//
-	void log_terminate( word error, const char *file_name, word line_number );
+	void log_terminate( word error, const __FlashStringHelper *file_name, word line_number );
 };
 
 

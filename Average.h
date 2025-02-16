@@ -22,7 +22,7 @@
 //
 //	The Average mechanism.
 //
-template< byte span >
+template< byte span, class data >
 class Average {
 public:
 	//
@@ -34,7 +34,7 @@ private:
 	//
 	//	The working area.
 	//
-	word	_value[ average_span ];
+	data	_value[ average_span ];
 
 public:
 	//
@@ -55,7 +55,7 @@ public:
 	//	Fold in a new value, returns the "oldest" averaged
 	//	value.
 	//
-	word add( word value ) {
+	data add( data value ) {
 		for( byte i = 0; i < average_span; i++ ) value = ( _value[ i ] = ( value + _value[ i ]) >> 1 );
 		return( value );
 	}
@@ -63,8 +63,16 @@ public:
 	//
 	//	read the average from a point in the data set.
 	//
-	word read( byte index ) {
+	data read( byte index ) {
 		if( index < average_span ) return( _value[ index ]);
+		return( _value[ average_span-1 ]);
+	}
+	
+	//
+	//	return the last value in the average chain without
+	//	needing to know how many values there are.
+	//
+	data last( void ) {
 		return( _value[ average_span-1 ]);
 	}
 };

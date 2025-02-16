@@ -1,11 +1,66 @@
-# Arduino Train Controller V0.2.2
+# Arduino Train Controller V0.3,5
 
 ## Summary
 
 While started as a branch from the Arduino DCC Generator with the intent of creating a free standing mechanism that will allow DCC operation of small layouts this is to be extended to recover lost functionality of the original Arduino DCC Generator.
 
-## Version 0.2.3
+## Version 0.3.5
 
+Introduce statistics gathering to determine the cause of the unstable output signal.
+
+Output signal stabilised using tuned "busy delay" in the DCC ISR.  Initial results showed significant variability in the  time taken for the MCU to call the DCC ISR.  This could only be caused by other ISR code (or Critical sections) so there has been a drive to relocate (where possible) all ISR application code to main line execution (using a Signal to link the event with the code).
+
+This version of the firmware is now stable and executes correctly with good DCC timing operating real trains successfully
+## Version 0.3.4
+
+Redefine the use of the 8 bit timers from producing regular interrupts at fixed times to producing specific timed delays to suite the requirements of the moment.  Impacted modules are the Clock and DCC modules: the users of the two 8 bit timers.
+
+## Version 0.3.3
+
+Extension includes low level SPI driver (compiles, not tested).  However the following items are objectives for this 0.3.3 version:
+
+  * A "pin database" mechanism to enable a consistency check to be made that pins allocated for a specific role are free to be allocated in that way when required.  This to be an extension of the Pin_IO module, and will require a small extension to the Pin_IO API.
+  * A modification to *all* the objects to step away from statically allocating tables for various roles to a system where tables are allocated "on request" using a simply heap based memory allocation system.
+
+These changes should make the future porting of this code to another platform less error prone, especially where other platforms have the ability for a single given device (e.g. a USART) to be presented at different locations on the MCUs pins.
+
+## Version 0.3.2
+
+January 2025
+
+Extended 0.3.1s scheduling modifications to provide fast and slow schedule queues.  Whereas 0.3.1 had only a single queue which released signals appended themselves to (so removing the whole task manager queue system) - this version uses two queues: fast and slow.  If a Signal is released from within an ISR (or simply when interrupts are disabled) the Signal is placed into the fast queue to expedite processing of the event that the signal indicates.  If the Signal was released during main line code execution (ie not in an ISR) then it is placed into the slow queue.
+
+When the task system is asked to find another process routine to call it will always pick from the fast queue if there are any signals ready before picking off the the slow queue.  Through this mechanism it is hoped that activities which are connected with physical devices (typically serviced via an ISR) are executed at a rate as close to that possible by the hardware, wasting less time (leaving less dead time between actions).  Software based activities will operate at a slower rate but are mostly tied into the HCI and therefore are subject to human perception which should not notice the difference.
+
+Testing shows that the "weight" of fast events is so heavy that the slow queue never sees any time.  Therefore the scheduler now has a balancing system which ensure that, after a set number of fast events a slow event must be selected.  This seems (so far) to result in working firmware with a more snappy feeling.  The value of the balance still needs tuning (downwards in all probability).
+
+## Version 0.3.1
+
+January 2025
+
+Updating the minor version number as the Task Manager and Signal handling module need to operate more cooperatively.  A little extra complexity in this area will create a more responsive and efficient task management system which should lead to faster firmware execution without any significant update the client module.
+
+This effectively removed the functionality of the task manager from its own module and inserted it into the Signal module.  The task manager now, effectively, only provides an interface into the Signal API.
+
+The Signal module now maintains a list of Signals which are released (at least once), and so there is no "searching" for a signal that is ready - there is always one ready at the head of the list. 
+
+## Version 0.3.0
+
+This version, while not (yet) fully functional is now a full re-write of the firmware which became the frozen version 0.2.0.
+
+To avoid confusion between the two very different pieces of software this has been renumbered to version 0.3.0 (ahead of it actually working).
+
+January 2025
+
+This version of the firmware has not been tested for accurate DCC generation (the packets per second value indicates that something is wrong).  However, the keypad, screen and rotary now work (implies that the TWI module works for multiple targets).
+
+Noticeable effects about this version are:
+
+  * The co-routine approach to "multi-tasking" works and allows sections of the firmware to continue working even while another section continues to work.
+  * Some elements of the firmware, while operating correctly, seem to be "slow" in their response.
+  * The task management and signal system are independent of each other leading to inefficiencies when the task manager is searching for a task to assign CPU time to.
+
+## Version 0.2.3
 
 This version, really an extension of v0.2.2, sees the
 following modifications:

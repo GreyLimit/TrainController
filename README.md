@@ -1,12 +1,41 @@
-# Arduino Train Controller V0.4.1
+# Arduino DCC Suite V0.4.1
 
 ## Summary
 
 While started as a branch from the Arduino DCC Generator with the intent of creating a free standing mechanism that will allow DCC operation of small layouts this is to be extended to recover lost functionality of the original Arduino DCC Generator.
 
+This version, V0.4, aims to complete the  merger of the Arduino Generator functionality with that of the Arduino Train Controller.  The aim is to have a single unified controller support computer directed operations (via USB and the "Fat Controller"), a programming track and the structured programming system from the DCC Arduino Generator with the ability to directly operate the device from the keypad.
+
 ## Version 0.4.1
 
-Moving closer to a more rounded and resilient version of the firmware now making heavier use of the memory heap model.
+Rename the whole package as the "Arduino DCC Suite" since the sub-structure will now be based on a commmon code base and support a number of Arduino based devices supporting DCC in one way or another.   In additon to the the whole package will be pivoting towards adopting a Layout Control Bus (LCB) architecture, with a specific aim of being compatible with the MERG VLCB project.  The proposed DCC/LCB products within this scope are the following:
+
+  * "DCC Generator": The original "Blue Box" solution designed specifically to interface to a computer and generate DCC signal for a layout, supporting a number of Districts and (optionally) a decoder programming track.
+  * "Train Controller": A device extending the DCC Generator that will also enable direct human train control for the box itself, making a controlling PC optional.
+  * "Accessory Decoder": Firmware to enable an Arduino to be used as a DCC connected accessory controller.
+  * "LCB Module": Firmware to support an Arduino being attached to the LCB operating as a fully integrated device.
+
+More to come.
+
+## Version 0.4.0
+
+Objectives for this version are:
+
+  * Pivot firmware from statically allocated takes and structure to using the Heap Manager.
+  * Attempt to bring the firmware down to a size where it can be installed within an UNO R3 / Nano R3.
+  * Expand the HCI to facilitate support of more flexible interface and wide control/configuration options.
+  * Add the Joystick control to the HCI to simplify the use of the device
+  * Create a better box for the device
+  * Add support for a programming track, but make this a configurable element
+  * Bring forward the structured decoder programming mechanism from version 0.2
+  * Include the "Program on Main" options
+
+Version 4.0.0 has been successful despite not addressing anything other than points 1 and 2:
+
+  * Firmware now using heap memory for table spaces which are dynamic (ie not known and fixed at compile time).  This is on an "allocate and keep" basis where a block of memory take from the heap is kept by its requester in a private free list when its immediate use is completed.
+  * The static memory allocation (global variables in SRAM) have been brought down to ~1400 bytes.  Conceptually this permits deployment into Arduino R3 Uno/Nano boards, however the read-only executable segment is greater than 32KBytes, and so does not accept the "Train Controller" version of the firmware.
+
+The following version of the firmware will address the need for different versions of the firmware for different platforms and roles before approaching the remaining points above.
 
 ## Version 0.3.5
 
@@ -69,7 +98,7 @@ Noticeable effects about this version are:
 This version, really an extension of v0.2.2, sees the
 following modifications:
 
-* Introduction of a simplified Dijstra P/V signalling system
+* Introduction of a simplified Dijkstra P/V signalling system
 
 * Introduction of a Signal controller task management system.
 

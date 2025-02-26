@@ -17,11 +17,13 @@
 //	an issue with the conversion (and remedial action needs
 //	to be done) or true if everything worked as planned.
 //
-//	The "int" version handles signed 16 bit numbers, the byte
-//	version unsigned 8 bit values.
+//	The "int" version handles signed 16 bit numbers, the word
+//	version unsigned 16 bit numbers and the byte version unsigned
+//	8 bit values.
 //
-extern bool backfill_int_to_text( char *buf, byte len, int v );
-extern bool backfill_byte_to_text( char *buf, byte len, byte v );
+extern bool backfill_int_to_text( char *buf, byte len, int v, char fill = SPACE );
+extern bool backfill_word_to_text( char *buf, byte len, word v, char fill = SPACE );
+extern bool backfill_byte_to_text( char *buf, byte len, byte v, char fill = SPACE );
 
 //
 //	Simple front loading routines, return number of bytes used,

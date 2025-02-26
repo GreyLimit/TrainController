@@ -28,6 +28,7 @@
 #include "Buffer.h"
 #include "Constants.h"
 #include "Average.h"
+#include "Memory_Heap.h"
 
 //
 //	Hardware specific DCC configuration
@@ -93,7 +94,7 @@
 //
 //	Define the DCC Generator class.
 //
-class DCC : public Task_Entry {
+class DCC : public Task_Entry, Memory_Recovery {
 public:
 	//
 	//	Timing definitions
@@ -118,7 +119,7 @@ public:
 	//	the hardware could be configured a single time and all
 	//	the necessary signal data could be generated from this.
 	//
-	//	Hense the hardwaare was configured to generate a 14.5us
+	//	Hense the hardware was configured to generate a 14.5us
 	//	interrupt which formed whole sub-sections of half a DCC
 	//	digit where 4 "ticks" formed the 1 and 7 the 0.  This
 	//	lead to a lot of interrupts but the earlier firmware being
@@ -145,7 +146,7 @@ public:
 	//	To do this we will, once again, require some form of
 	//	interval that factors into the timing for half of a DCC
 	//	1 (58us) or 0 digit (100us) and we can base this
-	//	calculation, on the work done for version of the timing
+	//	calculation on the work done for version of the timing
 	//	code.
 	//
 	//	This is actually simpler because we can count (with the
@@ -300,29 +301,6 @@ public:
 	//
 	static const byte	eeprom_maximum_output	= 48;
 
-	//
-	//	Define the number of buffers set aside for storing DCC packets
-	//	before transmission and the number of packets which can be 
-	//	transmitted aat any given time.
-	//
-#ifdef PENDING_PACKETS
-	static const byte	pending_packets		= PENDING_PACKETS;
-#else
-	static const byte	pending_packets		= SELECT_SML(8,16,32);
-#endif
-#ifdef TRANSMISSION_BUFFERS
-	static const byte	transmission_buffers	= TRANSMISSION_BUFFERS;
-#else
-	static const byte	transmission_buffers	= SELECT_SML(8,16,32);
-#endif
-
-	//
-	//	Declare the maximum number of "persistent" transmissions
-	//	(where the duration is set to zero) as a fraction of the
-	//	total number of transmission buffer.
-	//
-	static constexpr byte	max_persistent_buffers	= transmission_buffers - SELECT_SML(4,6,8);
-
 #if defined( ENABLE_DCC_DELAY_REPORT ) || defined( ENABLE_DCC_SYNCHRONISATION )
 	//
 	//	DCC Delay reporting and tuning
@@ -415,14 +393,15 @@ public:
 	//	End of packet "1"			1
 	//	
 	//
-	//	The result of this analysis is that 8 bytes are required
-	//	for each data byte in the packet, 8 for the checksum, 2
-	//	for the pre-amble and 1 for the post-amble.
+	//	The result of the above example is that 8 bytes are
+	//	required for each data byte in the packet, 8 for the
+	//	checksum, 1 for the end of packet, 2 for the pre-amble
+	//	and 1 for the post-amble.
 	//
 #ifdef BIT_TRANSITIONS
 	static const byte	bit_transitions = BIT_TRANSITIONS;
 #else
-	static constexpr byte	bit_transitions = ( maximum_command + 1 ) * 8 + 3;
+	static constexpr byte	bit_transitions = (( maximum_command + 1 ) * 8 + 3 ) / 2;
 #endif
 
 	//
@@ -434,6 +413,8 @@ public:
 	//	longest DCC command this code will handle.
 	//
 	//	This value is applied inside verification assert statements.
+	//	In a real sense this is pointless given that the count is held
+	//	in a byte value.
 	//
 	static const byte	maximum_bit_iterations	= 255;
 
@@ -507,30 +488,7 @@ private:
 	//	Define the the pending packet records and the head of the free
 	//	records list.
 	//
-	pending_packet		_free_packet[ pending_packets ];
 	pending_packet		*_free_packets;
-
-	//
-	//	The following array of bit transitions define the "DCC Idle Packet".
-	//
-	//	This packet contains the following bytes:
-	//
-	//		Address byte	0xff
-	//		Data byte	0x00
-	//		Parity byte	0xff
-	//
-	//	This is translated into the following bit stream:
-	//
-	//		1111...11110111111110000000000111111111
-	//
-	static byte idle_packet[];
-
-	//
-	//	The following array does not describe a DCC packet, but a
-	//	filler of a single "1" which is required while working
-	//	with decoders in service mode.
-	//
-	static byte filler_data[];
 
 
 	//
@@ -593,6 +551,7 @@ private:
 	//
 	enum buffer_state : byte {		// One line summary of meaning.
 		state_empty	= 0,		// Record empty available for use.
+		state_fixed,			// This is the fixed record.
 		state_load,			// Current transmission completed, load next pending record.
 		state_run,			// Current transmission in progress.
 		state_reload			// Terminate current transmission (ISR to flip to state_load)
@@ -663,10 +622,13 @@ private:
 		//
 		//
 		//	The target ID of the packet, and an indication
-		//	of what the target is.
+		//	of what the target is and some "data" giving
+		//	internal details of that action.
 		//
 		word		target;
 		bool		mobile;
+		word		action;
+		
 		//
 		//	The duration countdown (if non-zero).  An initial value
 		//	of zero indicates no countdown meaning the packet is transmitted
@@ -708,27 +670,39 @@ private:
 		//	Buffer linkage.
 		//	---------------
 		//
-		//	Finally, the link to the next buffer
+		//	Finally, the link to the next buffer and the
+		//	link back to the previous buffer.
 		//
-		trans_buffer	*next;
+		trans_buffer	*next,
+				**prev;
 	};
 
 	//
 	//	Define the transmission buffers to be used, and the
 	//	pointers into it for various purposes.
 	//
-	trans_buffer		_circular_buffer[ transmission_buffers ],
-				*_current,	// Current buffer being transmitted.
-				*_manage;	// Next buffer to be managed.
-
+	//	To ensure that the circular list of active buffers is
+	//	never empty (and so that the cide which deals with the
+	//	circular list *never* has to deal with the empty list
+	//	scenario) the DCC module will create a *special* static
+	//	buffer which always sends a single idle packet.
 	//
-	//	Record the number of persistent buffers *that can be
-	//	created*.  This is a "count down" value meaning that
-	//	when zero no more persistent transmissions can be
-	//	created.
+	//	The constructor and initialiser will ensure that when the
+	//	DCC signal is started this record will form the *only*
+	//	record in the circular list.
 	//
-	byte			_persistent;
-
+	trans_buffer		*_current,	// Current buffer being transmitted.
+				*_circle,	// A fixed point to the fixed record.
+				*_free_trans;	// Free transmission buffers.
+	//
+	//	These two lists are used to hand off records between the
+	//	ISR and the manager code so they need to be set as volatile.
+	//
+	volatile trans_buffer	*_run,		// A list of records that the ISR
+						// needs to run.
+				*_manage,	// Next buffer to be managed.
+				*_scan;		// The next buffer to be scanned
+						// for its action data.
 	//
 	//	Signal generation variables, not volatile as they are
 	//	only modified by the interrupt routine.
@@ -739,14 +713,16 @@ private:
 				_one;
 
 	//
-	//	For statistical purposes the following variable are
+	//	For statistical purposes the following variables are
 	//	maintained:
 	//
 	byte			_free_buffers;
 	word			_packets_sent;
+	
 #if defined( ENABLE_DCC_DELAY_REPORT ) || defined( ENABLE_DCC_SYNCHRONISATION )
 	Average< delays, byte >	_delay;
 #endif
+
 #if defined( ENABLE_DCC_SYNCHRONISATION )
 	byte			_irq_sync;
 #endif
@@ -856,7 +832,7 @@ private:
 	//	Request an empty buffer to be set aside for building
 	//	a new transmission activity.
 	//
-	trans_buffer *acquire_buffer( word target, bool mobile, bool overwrite );
+	trans_buffer *acquire_buffer( word target, bool mobile, word action, bool overwrite );
 
 	//
 	//	This is the routine which adds a pending DCC packet to the
@@ -876,6 +852,29 @@ private:
 	//
 	void cancel_buffer( trans_buffer *rec );
 
+	//
+	//	Declare some static routines used by the public action
+	//	value routines.
+	//
+	//	These routines are used to encode three pieces of information
+	//	into a 16 bit word value:
+	//
+	//	o	A 4 bit opcode (bits 8-11)
+	//	o	A boolean flag (bit 7)
+	//	o	A 7 bit unsigned value (bits 0-6)
+	//
+	static inline word create_action( byte op, byte flag, byte value ) {
+		return((((word)op & 0x000f ) << 8 )|(((word)flag & 0x0001 ) << 7 )|((word)value & 0x007f ));
+	}
+	static inline byte action_op( word action ) {
+		return((byte)(( action >> 8 ) & 0x000f ));
+	}
+	static inline byte action_flag( word action ) {
+		return((byte)(( action >> 7 ) & 0x0001 ));
+	}
+	static inline byte action_value( word action ) {
+		return((byte)( action & 0x007f ));
+	}
 
 
 public:
@@ -900,8 +899,8 @@ public:
 	//
 	//	This routine is the "manager" of the DCC packets being
 	//	transmitted.  This is called asynchronously from the
-	//	clock_pulse() routine by releasing a resource on the
-	//	"_manager" signal.
+	//	irq() routine by releasing a resource on the "_manager"
+	//	signal.
 	//
 	//	The Signal object manages all aspects of of concurrency
 	//	where the ISR might release multiple transmission records
@@ -914,11 +913,62 @@ public:
 	//	a static routine as it shuold only ever access the static variables
 	//	defined in the class.
 	//
-	void clock_pulse( void );
+	void irq( void );
+	
+	//
+	//	API for recovering and decoding data from the active
+	//	buffers.
+	//
+	void reset_scan( void );
+	bool scan_next( word *target, bool *mobile, word *action );
+	
+	//
+	//	action values can be created and decoded using the following
+	//	static inline functions.
+	//
+	static inline word speed_and_dir( byte speed, byte direction ) {
+		return( create_action( 1, direction, speed ));
+	}
+	//
+	static inline bool is_speed_and_dir( word action ) {
+		return( action_op( action ) == 1 );
+	}
+	static inline byte get_speed( word action ) {
+		return( action_value( action ));
+	}
+	static inline byte get_dir( word action ) {
+		return( action_flag( action ));
+	}
+	//
+	static inline word func_and_state( byte func, byte state ) {
+		return( create_action( 2, state, func ));
+	}
+	//
+	static inline bool is_func_and_state( word action ) {
+		return( action_op( action ) == 2 );
+	}
+	static inline byte get_func( word action ) {
+		return( action_value( action ));
+	}
+	static inline byte get_state( word action ) {
+		return( action_flag( action ));
+	}
+	//
+	static inline word accessory_state( byte state ) {
+		return( create_action( 3, state, 0 ));
+	}
+	//
+	static inline bool is_accessory_state( word action ) {
+		return( action_op( action ) == 3 );
+	}
+	static inline byte get_accessory_state( word action ) {
+		return( action_flag( action ));
+	}
 
 	//
 	//	API for sending commands out through DCC.  *ALL* paramters
-	//	are the DCC specification values.  Note especially speeds.
+	//	are the DCC specification values.  Note this especially
+	//	applies to the speeds.
 	//
 	bool mobile_command( word target, byte speed, byte direction, Buffer_API *reply = NIL( Buffer_API ));
 	bool accessory_command( word target, byte state, Buffer_API *reply = NIL( Buffer_API ));
@@ -926,16 +976,25 @@ public:
 	bool state_command( word target, byte speed, byte dir, byte fn[ DCC_Constant::bit_map_array ], Buffer_API *reply = NIL( Buffer_API ));
 
 	//
+	//	The memory recovery API
+	//	=======================
+	//
+	virtual bool release_memory( void );
+
+	//
 	//	Routines used to access statistical analysis
 	//
 	byte free_buffers( void );
 	word packets_sent( void );
+	
 #if defined( ENABLE_DCC_DELAY_REPORT ) || defined( ENABLE_DCC_SYNCHRONISATION )
 	byte irq_delay( void );
 #endif
+
 #if defined( ENABLE_DCC_SYNCHRONISATION )
 	byte irq_sync( void );
 #endif
+
 };
 
 //

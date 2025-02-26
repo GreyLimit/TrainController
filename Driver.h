@@ -15,13 +15,7 @@
 #include "Configuration.h"
 #include "Environment.h"
 #include "Pin_IO.h"
-
-//
-//	Set the maximum number of districts we want to be able to handle.
-//
-#ifndef MAXIMUM_DISTRICTS
-#define MAXIMUM_DISTRICTS	8
-#endif
+#include "Districts.h"
 
 //
 //	Define the class that encapsulates the output pin code.
@@ -36,7 +30,7 @@ public:
 	//	Define the maximum number of districts which the
 	//	class will accommodate.
 	//
-	static const byte	maximum_districts = MAXIMUM_DISTRICTS;
+	static const byte	maximum_districts = Districts::districts;
 	
 private:
 	//

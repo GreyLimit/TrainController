@@ -11,38 +11,6 @@
 #include "Clock.h"
 #include "Stats.h"
 
-//
-//	The following array of bit transitions define the "DCC Idle Packet".
-//
-//	This packet contains the following bytes:
-//
-//		Address byte	0xff
-//		Data byte	0x00
-//		Parity byte	0xff
-//
-//	This is translated into the following bit stream:
-//
-//		1111...11110111111110000000000111111111
-//
-byte DCC::idle_packet[] = {
-	DCC::short_preamble,	// 1s
-	1,			// 0s
-	8,			// 1s
-	10,			// 0s
-	9,			// 1s
-	0
-};
-
-//
-//	The following array does not describe a DCC packet, but a
-//	filler of a single "1" which is required while working
-//	with decoders in service mode.
-//
-byte DCC::filler_data[] = {
-	1,			// 1s
-	0
-};
-
 
 //
 //	Private support routines.
@@ -511,7 +479,7 @@ byte DCC::compose_function_block( byte *command, word adrs, byte *state, byte fn
 //	Request an empty buffer to be set aside for building
 //	a new transmission activity.
 //
-DCC::trans_buffer *DCC::acquire_buffer( word target, bool mobile, bool overwrite ) {
+DCC::trans_buffer *DCC::acquire_buffer( word target, bool mobile, word action, bool overwrite ) {
 	
 	STACK_TRACE( "DCC::trans_buffer *DCC::acquire_buffer( word target, bool mobile, bool overwrite )" );
 
@@ -519,6 +487,8 @@ DCC::trans_buffer *DCC::acquire_buffer( word target, bool mobile, bool overwrite
 	TRACE_DCC( console.print( target ));
 	TRACE_DCC( console.print( F( " mobile " )));
 	TRACE_DCC( console.print( mobile ));
+	TRACE_DCC( console.print( F( " action " )));
+	TRACE_DCC( console.print_hex( action ));
 	TRACE_DCC( console.print( F( " overwrite " )));
 	TRACE_DCC( console.println( overwrite ));
 
@@ -531,65 +501,89 @@ DCC::trans_buffer *DCC::acquire_buffer( word target, bool mobile, bool overwrite
 	//
 	ASSERT( target != DCC_Constant::broadcast_address );
 
-	//
-	//	Overwrite can only be used with mobile transmissions
-	//	which should be obvious as only mobile speed/dir
-	//	transmissions can be persistent.
-	//
-	ASSERT( mobile ||( !mobile && !overwrite ));
-	
-	trans_buffer	*look,
-			*found;
+	trans_buffer	*found;
 
-	//
-	//	Look for a transmission record we can use to
-	//	build a new DCC packet sequence in.
 	//
 	//	When target is a valid target address we are looking
 	//	for the record already sending to that address before
 	//	using an empty record.
 	//
-	look = _manage;			// We start where the manager is.
 	found = NIL( trans_buffer );	// Not found yet.
+	
 	//
-	//	If we want a re-writable record, try this scan first.
+	//	If we want to re-writable record we will need to scan
+	//	the circular list of live buffers first.
 	//
 	if( overwrite ) {
-		for( byte i = 0; i < transmission_buffers; i++ ) {
-			if(( look->mobile == mobile )&&( look->target == target )&&( look->state == state_run )&&( look->duration == 0 )) {
+
+		TRACE_DCC( console.println( F( "DCC Search" )));
+
+		//
+		//	Overwrite can only be used with mobile transmissions
+		//	which should be obvious as only mobile speed/dir
+		//	transmissions can be persistent and therefore need
+		//	to be modified.
+		//
+		ASSERT( mobile );
+	
+		for( trans_buffer *look = _circle->next; look->state != state_fixed; look = look->next ) {
+
+			TRACE_DCC( console.print( F( "DCC id " )));
+			TRACE_DCC( console.print( look->target ));
+			TRACE_DCC( console.print( look->mobile? F( " mob " ): F( " acc " )));
+			TRACE_DCC( console.println( look->duration ));
+			
+			if( look->mobile &&( look->target == target )&&( look->duration == 0 )) {
 				//
-				//	Found a re-writable buffer in the right mode, to the right target.
+				//	Note the buffer located.
 				//
 				found = look;
+				
+				//
+				//	Clear any pending records that may be attached.
+				//	
+				//
+				found->pending = release_pending_recs( found->pending, false );
+
 				break;
 			}
-			look = look->next;
-		}
+		} 
 	}
 	//
-	//	If we didn't want a re-writable record, or simply didn't
-	//	find one, then try this scan.
+	//	If we didn't want to re-writable record, or simply didn't
+	//	find the required one, then try to find a free record.
 	//
-	if( found == NIL( trans_buffer )) {
-		for( byte i = 0; i < transmission_buffers; i++ ) {
-			if( look->state == state_empty ) {
-				found = look;
-				break;
+	if( !found ) {
+		if(( found = _free_trans )) {
+
+			TRACE_DCC( console.println( F( "DCC Reuse" )));
+
+			_free_trans = found->next;
+			
+			ASSERT( found->state == state_empty );
+			
+			_free_buffers--;
+		}
+		else {
+			if(( found = new trans_buffer )) {
+
+				TRACE_DCC( console.println( F( "DCC Create" )));
+
+				found->state = state_empty;
 			}
-			look = look->next;
 		}
 	}
 	
 	//
 	//	If found is empty then we have failed, return
-	//	an empty pointer
+	//	an empty pointer.
 	//
-	if( found == NIL( trans_buffer )) return( NIL( trans_buffer ));
+	if( !found ) {
 
-	//
-	//	Clear any pending records that may be attached.
-	//
-	found->pending = release_pending_recs( found->pending, false );
+		TRACE_DCC( console.println( F( "DCC Failed" )));
+
+		return( NIL( trans_buffer ));
+	}
 
 	//
 	//	Remember the target address used for this record.
@@ -599,6 +593,9 @@ DCC::trans_buffer *DCC::acquire_buffer( word target, bool mobile, bool overwrite
 	//
 	found->target = target;
 	found->mobile = mobile;
+	found->action = action;
+	found->duration = 1;
+	found->pending = NIL( pending_packet );
 
 	//
 	//	Ready to add dcc packets to the record.
@@ -634,10 +631,14 @@ bool DCC::extend_buffer( DCC::trans_buffer *rec, byte duration, byte preamble, b
 	ASSERT( len < maximum_command );
 	
 	//
-	//	Look for an empty pending record. 
+	//	Look for an empty pending record or create one. 
 	//
-	if(( ptr = _free_packets ) == NIL( pending_packet )) return( false );
-	_free_packets = ptr->next;
+	if(( ptr = _free_packets )) {
+		_free_packets = ptr->next;
+	}
+	else {
+		if(!( ptr = new pending_packet )) return( false );
+	}
 	
 	//
 	//	There is a spare record available so fill it in.
@@ -670,7 +671,6 @@ bool DCC::complete_buffer( DCC::trans_buffer *rec ) {
 	STACK_TRACE( "bool DCC::complete_buffer( DCC::trans_buffer *rec )" );
 	
 	pending_packet	*ptr;
-	byte		persistent;
 
 	ASSERT( rec != NIL( trans_buffer ));
 	ASSERT(( rec->state == state_empty )||( rec->state == state_run ));
@@ -683,16 +683,15 @@ bool DCC::complete_buffer( DCC::trans_buffer *rec ) {
 	//	We return false because this is a error, just
 	//	not a fatal one.
 	//
-	if(( ptr = rec->pending ) == NIL( pending_packet )) return( false );
+	if(!( ptr = rec->pending )) return( false );
 	
 	//
 	//	Reverse the pending records list to correct the
-	//	order in which they are "pre-pended" onto the
+	//	order created when they are "pre-pended" onto the
 	//	pending list inside the "extend_buffer()" routine.
 	//
 	rec->pending = NIL( pending_packet );
-	persistent = 0;
-	while( ptr != NIL( pending_packet )) {
+	while( ptr ) {
 		pending_packet *t;
 
 		//
@@ -702,50 +701,6 @@ bool DCC::complete_buffer( DCC::trans_buffer *rec ) {
 		ptr = t->next;
 		t->next = rec->pending;
 		rec->pending = t;
-		//
-		//	Increment the persistent count, if persistent.
-		//
-		if( t->duration == 0 ) persistent++;
-	}
-
-	//
-	//	This is a "no-brain-er" really, but wise to check.
-	//	it has to be zero or one.
-	//
-	ASSERT( persistent <= 1 );
-	
-	//
-	//	Now verify that there is sufficient persistent
-	//	capacity remaining to support this new command.
-	//	Need to consider that the "current" active
-	//	transmission might already be a persistent one.
-	//
-	if(( rec->state == state_run )&&( rec->duration == 0 )) {
-		//
-		//	As this is already persistent we only need to
-		//	modify the persistence count if it is to be
-		//	replaced by one which is not.  In which case
-		//	we can increase the persistence availability.
-		//
-		if( !persistent ) _persistent += 1;
-	}
-	else {
-		//
-		//	So we are not modifying a persistent transmission
-		//	then we only need to ensure that there remains
-		//	enough capacity for any new persistent transmission.
-		//
-		if( persistent > _persistent ) {
-			//
-			//	Failed! -- unwind the new records.
-			//
-			rec->pending = release_pending_recs( rec->pending, false );
-			return( false );
-		}
-		//
-		//	Adjust persistence count down.
-		//
-		_persistent -= persistent;
 	}
 
 	//
@@ -755,30 +710,27 @@ bool DCC::complete_buffer( DCC::trans_buffer *rec ) {
 	//
 	if( rec->state == state_run ) {
 		//
-		//	We need to get the ISR to convert
-		//	the record from its current state
-		//	to state_load so we get it to
-		//	state_reload (this is safe way to
-		//	do this).
+		//	We need to get the ISR to pass this
+		//	record back to the manager to get the
+		//	bit pattern created and start transmission.
 		//
 		rec->state = state_reload;
 	}
 	else {
 		//
-		//	We can directly pass this to the manager
-		//	to handle, so set this to state load
-		//	*and* release() the _manager (also safe).
+		//	We need to get this record into the circular
+		//	queue.  The best way to do this is to add it
+		//	to the managers queue and signal it to do the
+		//	work.
 		//
 		rec->state = state_load;
+		{
+			Critical code;
+
+			rec->next = (trans_buffer *)_manage;
+			_manage = rec;
+		}
 		_manager.release();
-		
-		//
-		//	Reduce free buffers count.
-		//
-		
-		ASSERT( _free_buffers > 0 );
-		
-		_free_buffers--;
 	}
 	//
 	//	Report success.
@@ -804,22 +756,23 @@ void DCC::cancel_buffer( trans_buffer *rec ) {
 	//	How we cancel a buffer could depend on the
 	//	state that it is currently in.
 	//
-	//	We *could* be updating a running buffer - in
-	//	which case we clear the pending list and leave
-	//	it alone.
-	//
-	//	If we are cancelling an empty buffer then we
-	//	*also* clear the pending list and leave it alone.
-	//
-	//	While the actual actions are the same they must
-	//	not be see as identical as one transmission record
-	//	is live and working and the other is not.
-
-	//
-	//	Clear any pending records so they are available
-	//	for other commands.
-	//
-	rec->pending = release_pending_recs( rec->pending, false );
+	if( rec->state == state_run ) {
+		//
+		//	We are updating a running buffer - in which case
+		//	we clear the pending list and leave it alone.
+		//
+		rec->pending = release_pending_recs( rec->pending, false );
+	}
+	else {
+		//
+		//	We are cancelling an empty buffer.  We clear the
+		//	pending list and add it to the free trans list.
+		//
+		rec->pending = release_pending_recs( rec->pending, false );
+		rec->next = _free_trans;
+		_free_trans = rec;
+		_free_buffers++;
+	}
 }
 
 
@@ -830,56 +783,88 @@ DCC::DCC( void ) {
 	//
 	//	Reset everything to the start state.
 	//
-	_side = true;
-	_one = true;
-	_bit_string = idle_packet;
-	
-	//
-	//	Mark all buffers as unused and empty.
-	//
-	for( byte i = 0; i < transmission_buffers; i++ ) {
-		//
-		//	Clear out the record.
-		//
-		_circular_buffer[ i ].state = state_empty;
-		_circular_buffer[ i ].pending = NIL( pending_packet );
-	}
-	_persistent = max_persistent_buffers;
-	_free_buffers = transmission_buffers;
+	_free_buffers = 0;
 	_packets_sent = 0;
+	_free_trans = NIL( trans_buffer );
+	_free_packets = NIL( pending_packet );
+	
 #if defined( ENABLE_DCC_SYNCHRONISATION )
+	//
+	//	Start the sync time as zer as this will immediately
+	//	be lifted to the first "proper" delay time.
+	//
 	_irq_sync = 0;
 #endif
+
 	//
-	//	Link all buffers into a circle for symmetry
-	//	in the code when walking through the buffers.
+	//	Set up the fixed idle packet as the constant entry
+	//	into the circular buffer list.
 	//
-	for( byte i = 0; i < transmission_buffers-1; i++ ) {
-		//
-		//	Next pointer links forwards.
-		//
-		_circular_buffer[ i ].next = &( _circular_buffer[ i+1 ]);
-	}
+	if(!( _circle = new trans_buffer )) ABORT( HEAP_ERR_OUT_OF_MEMORY );
 	//
-	//	Last links back to first.
+	//	Set buffer content..
 	//
-	_circular_buffer[ transmission_buffers-1 ].next = &( _circular_buffer[ 0 ]);
+	_circle->state = state_fixed;		// Note that this is the fixed record.
+	_circle->target = 0;			// No target specified.
+	_circle->mobile = false;		// Accessory by default (unnecessary)
+	_circle->duration = 0;			// Run for ever, never delete.
+						// Copy in idle packet.
+
+	// JEFF
+	//
+	//	It seems reasonable for the "fixed" record to be
+	//	just the transmission of a single "1" bit, not an
+	//	idle record at all.  This would have the benefit of
+	//	working for both the main and programming tracks and
+	//	also reduce the amount of wasted bandwidth.
+	//
+	//	Need to check the DCC specification on this.
+	//
 	
 	//
-	//	Set up all the free pending packets, just a simple
-	//	linked list.
+	//	The following array of bit transitions define the "DCC Idle Packet".
 	//
-	_free_packets = NIL( pending_packet );
-	for( byte i = 0; i < pending_packets; i++ ) {
-		_free_packet[ i ].next = _free_packets;
-		_free_packets = &( _free_packet[ i ]);
-	}
+	//	This packet contains the following bytes:
+	//
+	//		Address byte	0xff
+	//		Data byte	0x00
+	//		Parity byte	0xff
+	//
+	//	This is translated into the following bit stream:
+	//
+	//		1111...11110111111110000000000111111111
+	//
+	_circle->bits[ 0 ] = DCC::short_preamble;	// 1s
+	_circle->bits[ 1 ] = 1;				// 0s
+	_circle->bits[ 2 ] = 8;				// 1s
+	_circle->bits[ 3 ] = 10;			// 0s
+	_circle->bits[ 4 ] = 9;				// 1s
+	_circle->bits[ 5 ] = 0;
+
+	//
+	//	Make the  circular list.
+	//
+	_circle->pending = NIL( pending_packet );
+	_circle->reply_when = reply_none;
+	_circle->reply[ 0 ] = EOS;
+	_circle->next = _circle;
+	_circle->prev = &( _circle->next );
+
+	//
+	//	Finally set up the controlling pointers.
+	//
+	_scan = _current = _circle;
+	_run = _manage = NIL( trans_buffer );
 	
 	//
-	//	Finally set up the ISR and managers pointers
-	//	into the circular buffer area.
+	//	Set up the output variables for an idle packet so the
+	//	signal generator sends this out before starting on the
+	//	active buffers.
 	//
-	_current = _manage = _circular_buffer;
+	_bit_string = _current->bits;
+	_left = *_bit_string++;
+	_side = true;
+	_one = true;
 }
 
 //
@@ -899,6 +884,12 @@ void DCC::initialise( void ) {
 
 	TRACE_DCC( console.print( F( "DCC manager flag " )));
 	TRACE_DCC( console.println( _manager.identity()));
+
+	//
+	//	Register ourselves with the Memory Heap
+	//	for memory recovery processing.
+	//
+	heap.recover_from( this );
 
 	//
 	//	link this object into the task manager so
@@ -940,15 +931,7 @@ void DCC::initialise( void ) {
 		//		1's or 0's as required.
 		//
 		DCC_COMPARE_REGISTER = timer_digit_1_cycles;
-		//
-		//		Set up the output parameters to match an
-		//		idle packet so the interrupt routine has
-		//		something sensible to work on.
-		//
-		_bit_string = idle_packet;
-		_left = *_bit_string++;
-		_side = true;
-		_one = true;
+
 		//
 		//		Turn on CTC mode
 		//
@@ -989,7 +972,7 @@ void DCC::initialise( void ) {
 //
 //	This routine is the "manager" of the DCC packets being
 //	transmitted.  This is called asynchronously from the
-//	clock_pulse() routine by releasing a resource on the
+//	irq() routine by releasing a resource on the
 //	"_manager" signal.
 //
 //	The task manager, seeing a resource become available, will
@@ -1008,103 +991,118 @@ void DCC::process( byte handle ) {
 	//
 	if( handle == management_process ) {
 
+#if 0
+		{
+			console.println( F( "DCC Buffers" ));
+			for( trans_buffer *p = _circle->next; p->state != state_fixed; p = p->next ) {
+				console.print( '<' );
+				console.print( p->target );
+				console.print( p->mobile? 'M': 'A' );
+				console.println( '>' );
+			}
+			
+			console.println( F( "DCC Manage" ));
+			for( trans_buffer *p = (trans_buffer *)_manage; p != NIL( trans_buffer ); p = p->next ) {
+				console.print( '<' );
+				console.print( p->target );
+				console.print( p->mobile? 'M': 'A' );
+				console.println( '>' );
+			}
+		}
+#endif
+
 		TRACE_DCC( console.println( F( "DCC management" )));
 
+		ASSERT( _manage != NIL( trans_buffer ));
+
+		trans_buffer	*tb;
 		pending_packet	*pp;
 
 		//
-		//	This routine only handles the conversion of byte encoded DCC packets into
-		//	bit encoded packets and handing the buffer off to the ISR for transmission.
+		//	This section of code is initiated by the ISR
+		//	releasing the _manager signal once for each
+		//	buffer that it has placed into the _manage
+		//	queue.
 		//
-		//	Consequently we are only interested in buffers set to "state_load".
+		//	The code simply takes the first record off
+		//	this list (in a Critical section) and either
+		//	loads the next pending record before sending
+		//	back to the ISR or adds the record to the free
+		//	list.
 		//
-		//	We should not be called up, ever, unless there is at least one buffer set
-		//	to "state_load".
-		//
-		
-		//
-		//	Find that buffer by moving through the circular
-		//	list until we tumble over it.
-		//
-		//	JEFF		This is a real candidate
-		//			for getting caught in a
-		//			permanent spin-loop.
-		//
-		//	Might need to consider some active counting code here to
-		//	catch situations where this goes wrong.
-		//
-		while( _manage->state != state_load ) _manage = _manage->next;
+		{
+			Critical code;
+
+			tb = (trans_buffer *)_manage;
+			_manage = tb->next;
+		}
 		
 		//
 		//	Pending DCC packets to process? (assignment intentional)
 		//
-		if(( pp = _manage->pending )) {
+		if(( pp = tb->pending )) {
 			//
 			//	Our tasks here are to convert the pending data into live
-			//	data, then set the state to RUN.
+			//	data, then get the ISR to insert the record into the
+			//	circular queue.
 			//
-			if( pack_command( pp->command, pp->len, pp->preamble, pp->postamble, _manage->bits )) {
+			if( pack_command( pp->command, pp->len, pp->preamble, pp->postamble, tb->bits )) {
 				//
 				//	Good, set up the remainder of the live parameters.
 				//
-				_manage->duration = pp->duration;
-				
-				//
-				//	We set state now as this is the trigger for the
-				//	interrupt routine to start processing the content of this
-				//	buffer (so everything must be completed before hand).
-				//
-				//	We have done this in this order to prevent a situation
-				//	where the buffer has state LOAD and pending == NULL, as
-				//	this might (in a case of bad timing) cause the ISR to output
-				//	an idle packet when we do not want it to.
-				//
-				_manage->state = state_run;
+				tb->duration = pp->duration;
+				tb->state = state_run;
 				
 				//
 				//	Now we dispose of the one pending record we have used.
 				//
-				_manage->pending = release_pending_recs( _manage->pending, true );
+				tb->pending = release_pending_recs( tb->pending, true );
 				
 				//
-				//	Finally, if this had a "reply at start" confirmation and
+				//	If this had a "reply at start" confirmation and
 				//	the command we have just lined up is the last one in the
 				//	list, then send the confirmation now.
 				//
-				if(( _manage->reply_when == reply_at_start )&&( _manage->pending == NIL( pending_packet ))) {
+				if(( tb->reply_when == reply_at_start )&&( tb->pending == NIL( pending_packet ))) {
 					//
 					//	We have just loaded the last pending record, so this
 					//	is the one for which the reply is appropriate.
 					//
-					if( !console.print( _manage->reply )) {
-						errors.log_error( COMMAND_REPORT_FAIL, _manage->target );
-					}
+					if( !console.print( tb->reply )) errors.log_error( COMMAND_REPORT_FAIL, tb->target );
 
 					//
-					//	Clear reply flag
+					//	Clear reply flag.
 					//
-					_manage->reply_when = reply_none;
+					tb->reply_when = reply_none;
+				}
+				//
+				//	Hand over to the ISR via the "_run" list,
+				//	another Critical code section.
+				//
+				{
+					Critical code;
+
+					tb->next = (trans_buffer *)_run;
+					_run = tb;
 				}
 			}
 			else {
 				//
-				//	Failed to complete as the bit translation failed.
+				//	The bit translation failed.
 				//
-				errors.log_error( TRANSMISSION_BIT_OVERFLOW, _manage->target );
+				errors.log_error( TRANSMISSION_BIT_OVERFLOW, tb->target );
 				
 				//
-				//	We push this buffer back to EMPTY, there is nothing
-				//	else we can do with it.
+				//	Scrap all pending records and add to the list of
+				//	free buffer records.
 				//
-				_manage->state = state_empty;
+				tb->pending = release_pending_recs( tb->pending, false );
+				tb->state = state_empty;
+				tb->next = _free_trans;
+				_free_trans = tb;
 				
 				//
-				//	Finally, we scrap all pending records.
-				//
-				_manage->pending = release_pending_recs( _manage->pending, false );
-				
-				//
-				//	Note a free buffer available.
+				//	Note another free buffer available.
 				//
 				_free_buffers++;
 			}
@@ -1114,32 +1112,22 @@ void DCC::process( byte handle ) {
 			//	The pending field is empty.  Before marking the buffer as empty
 			//	for re-use, we should check to see if a confirmation is required.
 			//
-			if( _manage->reply_when == reply_at_end ) {
-				if( !console.print( _manage->reply )) {
-					errors.log_error( COMMAND_REPORT_FAIL, _manage->target );
-				}
-				//
-				//	Clear reply flag
-				//
-				_manage->reply_when = reply_none;
+			if( tb->reply_when == reply_at_end ) {
+				if( !console.print( tb->reply )) errors.log_error( COMMAND_REPORT_FAIL, tb->target );
 			}
 			//
-			//	Now mark empty.
+			//	Add to the free list
 			//
-			_manage->state = state_empty;
+			tb->state = state_empty;
+			tb->next = _free_trans;
+			_free_trans = tb;
 
 			//
-			//	Note a free buffer available.
+			//	Note a free buffer becomes available.
 			//
 			_free_buffers++;
 		}
 
-		//
-		//	Finally, before we finish, remember to move onto the next buffer in the
-		//	circular queue.  This will prevent the management routine getting "fixed"
-		//	on a single buffer (even if this is *really* unlikely).
-		//
-		_manage = _manage->next;
 		//
 		//	Done.
 		//
@@ -1151,11 +1139,12 @@ void DCC::process( byte handle ) {
 	//	Is this a recalibration request.
 	//
 	if( handle == recalibrate_process ) {
-		
-		TRACE_DCC( console.println( F( "DCC recalibration" )));
-		
-		if( _delay.last() < ( _irq_sync >> 1 )) _irq_sync -= 1;
-		
+		if( _delay.last() < ( _irq_sync >> 1 )) {
+			
+			TRACE_DCC( console.println( F( "DCC recalibrated" )));
+			
+			_irq_sync -= 1;
+		}
 		return;
 	}
 #endif
@@ -1170,9 +1159,12 @@ void DCC::process( byte handle ) {
 //	a static routine as it shuold only ever access the static variables
 //	defined in the class.
 //
-void DCC::clock_pulse( void ) {
+void DCC::irq( void ) {
+
+	STACK_TRACE( "void DCC::irq( void )" );
 
 #if defined( ENABLE_DCC_DELAY_REPORT ) || defined( ENABLE_DCC_SYNCHRONISATION )
+
 	byte	delayed;
 	
 	//
@@ -1185,18 +1177,10 @@ void DCC::clock_pulse( void ) {
 	delayed = DCC_COUNTER_REGISTER;
 #endif
 
-	//
-	//	Stack trace placed here to avoid delaying the collection
-	//	of the DCC counter.
-	//
-	STACK_TRACE( "void DCC::clock_pulse( void )" );
-
-
 #ifdef ENABLE_DCC_SYNCHRONISATION
 	//
 	//	Now we wait for the target delay as calculated by the
-	//	previous interrupt calls (if it hasn't already passed
-	//	us by).
+	//	previous interrupts (if it hasn't already passed us by).
 	//
 	//	This does waste time on the CPU, but by doing so attempts
 	//	to more accurately in time run the following line of code
@@ -1212,8 +1196,7 @@ void DCC::clock_pulse( void ) {
 
 	//
 	//	We "flip" the output DCC signal now as this is the most
-	//	time consistent position to do so (being  the first
-	//	action of the interrrupt routine).
+	//	time consistent position to do so.
 	//
 	dcc_driver.toggle();
 
@@ -1234,7 +1217,7 @@ void DCC::clock_pulse( void ) {
 #else
 #ifdef ENABLE_DCC_DELAY_REPORT
 	//
-	//	Just gathering the DCC delay stats - if compiled in.
+	//	Just gathering the DCC delay stats.
 	//
 	_delay.add( DCC_COUNTER_REGISTER );
 #endif
@@ -1280,92 +1263,143 @@ void DCC::clock_pulse( void ) {
 			else {
 				//
 				//	_left is zero so this set of bit transitions
-				//	has been completed; we have sent a packet!
+				//	has been completed; there are no more bits to send,
+				//	we have sent a packet!
+				//
+				//	Will need to be aware that *if* the fixed buffer
+				//	becomes a single "1" it will not be a packet.
 				//
 				_packets_sent++;
 				
 				//
-				//	There are no more bits to transmit
-				//	from this buffer, but before we move
-				//	on we check the duration flag and act
-				//	upon it.
+				//	Before we move on to the next buffer we need to
+				//	check the duration flag and act upon it.
 				//
 				//	If the current buffer is in RUN mode and duration
 				//	is greater than 0 then we decrease duration and
-				//	if zero, reset state to LOAD.  This will cause the
-				//	buffer management code to check for any pending
-				//	DCC commands.
+				//	if becomes zero then we reset state to LOAD and
+				//	move into the managers queue.
+				//
+				//	At the end of the next block of statements the
+				//	current pointer will address the next buffer or
+				//	it will be zero.
 				//
 				if( _current->duration && ( _current->state == state_run )) {
 					if(!( --_current->duration )) {
-						_current->state = state_load;
+						trans_buffer	*ptr;
+						
+						//
+						//	Duration for this packet has dropped to zero
+						//	so we have finished with it.
+						//
+						//	Check scan first..
+						//
+						if( _scan == _current ) _scan = _scan->next;
+						//
+						//	Unhook and move to the manager queue while
+						//	moving current to the following buffer.
+						//
+						ptr = _current;
+						//
+						ptr->next->prev = ptr->prev;
+						_current = *( ptr->prev ) = ptr->next;
+						//
+						//	Attach to the managers input list and notify
+						//	the manager that there is work to do.
+						//
+						ptr->state = state_load;
+						ptr->next = (trans_buffer *)_manage;
+						_manage = ptr;
 						_manager.release();
 					}
+					else {
+						//
+						//	Move onto the next buffer as this buffer still
+						//	has time to run yet.
+						//
+						_current = _current->next;
+					}
+				}
+				else {
+					//
+					//	Move onto the next buffer as this buffer is
+					//	running forever.
+					//
+					_current = _current->next;
 				}
 
 				//
-				//	Move onto the next buffer.
+				//	At this point _current now points to the next
+				//	buffer to transmit.
 				//
-				_current = _current->next;
 
 				//
-				//	Actions related to the current state of the new
-				//	buffer (select bits to output and optional state
-				//	change).
+				//	The only special case we need to check for is when
+				//	the manager has requested that a record is removed
+				//	from the circular queue and returned to it (state_
+				//	reload).  Any other state is a "run this buffer"
+				//	state.
 				//
-				switch( _current->state ) {
-					case state_run: {
-						//
-						//	We just transmit the packet found in
-						//	the bit data
-						//
-						_bit_string = _current->bits;
-						break;
-					}
-					case state_reload: {
-						//
-						//	We have been asked to drop this buffer
-						//	so we output an idle packet while changing
-						//	the state of buffer to LOAD so the manager
-						//	can deal with it.
-						//
-						_bit_string = idle_packet;
-						_current->state = state_load;
-						_manager.release();
-						break;
-					}
-					case state_load: {
-						//
-						//	This is a little tricky.  While we do not
-						//	(and cannot) do anything with a buffer in
-						//	load state, there is a requirement for the
-						//	signal generator code NOT to output an idle
-						//	packet if we are in the middle of a series
-						//	of packets on the programming track.
-						//
-						//	This code *cannot* tell if it is programming
-						//	or just simply running trains.  The difference
-						//	is essentially that the main running track has
-						//	many transmission buffers, but the programming
-						//	track has only a single transmission buffer.
-						//
-						//	Therefore, when a sequence or programming commands
-						//	are sent to a programming track this code fills
-						//	in the gaps between them with "1"s so that semantics
-						//	of the programming track remain consistent.  
-						//
-						_bit_string = _current->pending? filler_data: idle_packet;
-						break;
-					}
-					default: {
-						//
-						//	If we find any other state we ignore the
-						//	buffer and output an idle packet.
-						//
-						_bit_string = idle_packet;
-						break;
-					}
+				if( _current->state == state_reload ) {
+					//
+					//	We have been asked to send this packet
+					//	back to the manager for re-work.  This is
+					//	required when the manager has added new
+					//	pending records but the duration is 0.
+					//
+					//	Check scan first..
+					//
+					if( _scan == _current ) _scan = _scan->next;
+					//
+					//	Unhook and move to manager queue.
+					//
+					_current->next->prev = _current->prev;
+					*( _current->prev ) = _current->next;
+					//
+					//	Attach to the managers input list and notify
+					//	the manager that there is work to do.
+					//
+					_current->state = state_load;
+					_current->next = (trans_buffer *)_manage;
+					_manage = _current;
+					_manager.release();
+					//
+					//	put current back into the fixed buffer.
+					//
+					_current = _circle;
+					_bit_string = _current->bits;
 				}
+				else {
+					ASSERT(( _current->state == state_fixed )||( _current->state == state_run ));
+					
+					//
+					//	We just transmit the packet described
+					//	in the bit data.
+					//
+					_bit_string = _current->bits;
+				}
+
+				//
+				//	Finally we see if there are buffers we need to
+				//	install into the circular queue.
+				//
+				if( _run ) {
+					trans_buffer	*ptr;
+
+					//
+					//	Unhook new buffer and set state to run.
+					//
+					ptr = (trans_buffer *)_run;
+					_run = ptr->next;
+					//
+					//	Slip in before the fixed record.
+					//
+					ptr->state = state_run;
+					*( ptr->prev = _circle->prev ) = ptr;
+					ptr->next = _circle;
+					_circle->prev = &( ptr->next );
+				}
+				
 				//
 				//	Initialise the remaining variables required to
 				//	output the selected bit stream.
@@ -1376,6 +1410,53 @@ void DCC::clock_pulse( void ) {
 			}
 		}
 	}
+}
+
+//
+//	API for recovering and decoding data from the active
+//	buffers.
+//
+void DCC::reset_scan( void ) {
+	//
+	//	To reset we point to the record after the fixed
+	//	record at circle.  This might be the same record
+	//	but that is absolutely correct, if the buffer
+	//	queue/circle is empty.
+	//
+	_scan = _circle->next;
+}
+bool DCC::scan_next( word *target, bool *mobile, word *action ) {
+	
+	ASSERT( target != NIL( word ));
+	ASSERT( mobile != NIL( bool ));
+	ASSERT( action != NIL( word ));
+	
+	//
+	//	We have to do this in a critical zoen as we
+	//	are looking into the circular buffer and this
+	//	is really under the control of the IRQ routine.
+	//
+	Critical code;
+	
+	//
+	//	Finding the fixed record means we have traversed the
+	//	whole circular buffer.
+	//
+	if( _scan->state == state_fixed ) return( false );
+	
+	//
+	//	Anthing else we find we will copy the key data.
+	//
+	*target = _scan->target;
+	*mobile = _scan->mobile;
+	*action = _scan->action;
+
+	//
+	//	Then move onto the next ..
+	//
+	_scan = _scan->next;
+	
+	return( true );
 }
 
 //
@@ -1391,6 +1472,7 @@ bool DCC::mobile_command( word target, byte speed, byte direction, Buffer_API *r
 	//
 	trans_buffer			*buf;
 	byte				command[ maximum_command ];
+	bool				stop;
 
 	TRACE_DCC( console.print( F( "DCC mobile " )));
 	TRACE_DCC( console.print( target ));
@@ -1409,15 +1491,20 @@ bool DCC::mobile_command( word target, byte speed, byte direction, Buffer_API *r
 	//
 	//	Find a transmission buffer to suit.
 	//
-	if(!( buf = acquire_buffer( target, true, true ))) {
+	if(!( buf = acquire_buffer( target, true, speed_and_dir( speed, direction ), true ))) {
 		errors.log_error( TRANSMISSION_TABLE_FULL, Protocol::mobile );
 		return( false );
 	}
 
 	//
+	//	Note if we are stopping the mobile decoder
+	//
+	stop = DCC_Constant::stationary_speed( speed );
+
+	//
 	//	Now create and append the command to the pending list.
 	//
-	if( !extend_buffer( buf, ( DCC_Constant::stationary_speed( speed )? TRANSIENT_COMMAND_REPEATS: 0 ), short_preamble, 1, command, compose_motion_packet( command, target, speed, direction ))) {
+	if( !extend_buffer( buf, ( stop? TRANSIENT_COMMAND_REPEATS: 0 ), short_preamble, 1, command, compose_motion_packet( command, target, speed, direction ))) {
 
 		TRACE_DCC( console.println( F( "DCC extend failed" )));
 
@@ -1431,7 +1518,7 @@ bool DCC::mobile_command( word target, byte speed, byte direction, Buffer_API *r
 	//
 	if( reply ) {
 		reply->copy( buf->reply, maximum_output );
-		buf->reply_when = reply_at_start;
+		buf->reply_when = stop? reply_at_end: reply_at_start;
 	}
 	else {
 		buf->reply_when = reply_none;
@@ -1475,7 +1562,7 @@ bool DCC::accessory_command( word target, byte state, Buffer_API *reply ) {
 	//
 	//	Find an unassigned empty transmission buffer.
 	//
-	if(!( buf = acquire_buffer( target, false, false ))) {
+	if(!( buf = acquire_buffer( target, false, accessory_state( state ), false ))) {
 		errors.log_error( TRANSMISSION_TABLE_FULL, Protocol::accessory );
 		return( false );
 	}
@@ -1527,7 +1614,7 @@ bool DCC::function_command( word target, byte func, byte state, Buffer_API *repl
 	//
 	//	Find an unassigned empty transmission buffer.
 	//
-	if(!( buf = acquire_buffer( target, true, false ))) {
+	if(!( buf = acquire_buffer( target, true, func_and_state( func, state ), false ))) {
 		errors.log_error( TRANSMISSION_TABLE_FULL, Protocol::function );
 		return( false );
 	}
@@ -1599,7 +1686,7 @@ bool DCC::state_command( word target, byte speed, byte dir, byte fn[ DCC_Constan
 	//
 	//	Find a transmission buffer to suit.
 	//
-	if(!( buf = acquire_buffer( target, true, true ))) {
+	if(!( buf = acquire_buffer( target, true, speed_and_dir( speed, dir ), true ))) {
 		errors.log_error( TRANSMISSION_TABLE_FULL, Protocol::rewrite_state );
 		return( false );
 	}
@@ -1642,6 +1729,49 @@ bool DCC::state_command( word target, byte speed, byte dir, byte fn[ DCC_Constan
 	//	Finalise the record and kick it off.
 	//
 	return( complete_buffer( buf ));
+}
+
+//
+//	The memory recovery API
+//	=======================
+//
+bool DCC::release_memory( void ) {
+	
+	STACK_TRACE( "void DCC::release_memory( void )" );
+
+	bool	r = false;
+
+	//
+	//	Clear the list of unused buffer records.
+	//
+	{
+		trans_buffer	*ptr;
+
+		while(( ptr = _free_trans )) {
+			_free_trans = ptr->next;
+			delete ptr;
+			_free_buffers--;
+			r = true;
+		}
+
+		ASSERT( _free_buffers == 0 );
+	}
+	//
+	//	Clear the list of unused pending packet records.
+	//
+	{
+		pending_packet	*ptr;
+
+		while(( ptr = _free_packets )) {
+			_free_packets = ptr->next;
+			delete ptr;
+			r = true;
+		}
+	}
+	//
+	//	Done.
+	//
+	return( r );
 }
 
 //
@@ -1694,7 +1824,7 @@ DCC dcc_generator;
 //
 ISR( DCC_TIMERn_COMPA_vect ) {
 	COUNT_INTERRUPT;
-	dcc_generator.clock_pulse();
+	dcc_generator.irq();
 }
 
 //

@@ -297,11 +297,6 @@ public:
 	static const byte	Highest_address = 127;
 	
 	//
-	//	Define the size of the pending queue implemented by these functions.
-	//
-	static const byte	maximum_queue = TWI_MAX_QUEUE_LEN;
-
-	//
 	//	Define the number of micro-seconds we pause operation
 	//	of the TWI device in the event of a hardware reset.
 	//
@@ -480,23 +475,20 @@ private:
 		//	The address where the error code of action is placed.
 		//
 		error_code		*result;
+		//
+		//	The next transaction to undertake (but cannot use
+		//	next as its been used).
+		//
+		transaction		*tail;
 	};
 
 	//
 	//	Define the pending exchange queue and indexes into it.
 	//
-	transaction	_queue[ maximum_queue ];	// This is the queue
-	byte		_queue_len,			// number of queued exchanges
-			_queue_in,			// index of next free slot
-			_queue_out;			// index of next pending exchange
+	transaction	*_active,
+			**_tail,
+			*_free;
 
-	//
-	//	The following pointer is used by the ISR
-	//	as the pointer to the "active" exchange
-	//	record.
-	//
-	transaction	*_active;
-	
 	//
 	//	Declare the event/process handle to be used with the
 	//	interrupt handler.

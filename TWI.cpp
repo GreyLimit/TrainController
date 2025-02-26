@@ -25,6 +25,7 @@
 #include "TWI.h"
 #include "Clock.h"
 #include "Code_Assurance.h"
+#include "Memory_Heap.h"
 #include "Task.h"
 #include "Trace.h"
 #include "Stats.h"
@@ -315,38 +316,32 @@ void TWI::next_action( void ) {
 
 	STACK_TRACE( "void TWI::next_action( void )" );
 
+	transaction	*ptr;
+
 	//
 	//	Are we replacing a now finished job?
 	//
-	if( _active ) {
+	if(( ptr = _active )) {
+		
 		//
 		//	Tell creator action has completed.
 		//
-
 		TRACE_TWI( console.print( F( "TWI release flag " )));
 		TRACE_TWI( console.println( _active->flag->identity()));
-		
-		_active->flag->release();
-		
+
+		ptr->flag->release();
+
 		//
 		//	Forget the action we have completed.
 		//
-
-		ASSERT( _queue_len > 0 );
-		ASSERT( _active == &( _queue[ _queue_out ]));
-		
-		_queue_len -= 1;
-		if(( _queue_out += 1 ) >= maximum_queue ) _queue_out = 0;
+		if(!( _active = ptr->tail )) _tail = &( _active );
+		ptr->tail = _free;
+		_free = ptr;
 	}
 	//
 	//	Is there anything left in the queue?
 	//
-	if( _queue_len ) {
-		//
-		//	Yes.
-		//
-		_active = &( _queue[ _queue_out ]);
-
+	if( _active ) {
 		//
 		//	Kick off this action.
 		//
@@ -360,12 +355,6 @@ void TWI::next_action( void ) {
 		_irq.release( true );
 
 		TRACE_TWI( console.println( F( "TWI queue started" )));
-	}
-	else {
-		//
-		//	No.
-		//
-		_active = NIL( transaction );
 	}
 }
 
@@ -414,21 +403,14 @@ bool TWI::queue_transaction( const TWI::machine_state *action, byte adrs, byte *
 	TRACE_TWI( console.println( flag->identity()));
 
 	//
-	//	Is there space for a new request?
+	//	Re-use or create a transaction record.
 	//
-	if( _queue_len >= maximum_queue ) {
-
-		TRACE_TWI( console.println( F( "TWI queue full" )));
-		
-		return( false );
+	if(( ptr = _free )) {
+		_free = ptr->tail;
 	}
-	
-	//
-	//	Locate the next available slot and adjust queue
-	//	appropriately.
-	//
-	ptr = &( _queue[ _queue_in++ ]);
-	if( _queue_in >= maximum_queue ) _queue_in = 0;
+	else {
+		if(!( ptr = new transaction )) return( false );
+	}
 	
 	//
 	//	"ptr" is the address of our queue record, so we can now
@@ -442,31 +424,18 @@ bool TWI::queue_transaction( const TWI::machine_state *action, byte adrs, byte *
 	ptr->recv = recv;
 	ptr->flag = flag;
 	ptr->result = result;
+	ptr->tail = NIL( transaction );
 	
 	//
-	//	Last action; increase the queue length and (if this is
-	//	the only item in the queue) release the flag to begin
-	//	the asynchronous processing.
+	//	Last action; append to the queue, and start the queue
+	//	if this is the first in the queue!
 	//
-	if(( _queue_len += 1 ) == 1 ) {
+	*_tail = ptr;
+	_tail = &( ptr->tail );
+	if( _active == ptr ) {
 		TRACE_TWI( console.println( F( "TWI start queue" )));
-
-		ASSERT( _active == NIL( transaction ));
-
-		_active = ptr;
-
-		ASSERT( _active == &( _queue[ _queue_out ])); 
-
-		//
-		//	We kick off the transaction by faking an interrupt
-		//	and getting the state machine to perform the
-		//	initial start action.
-		//
-		ASSERT( _irq.value() == 0 );
 		
 		_irq.release( true );
-
-		TRACE_TWI( console.println( F( "TWI queue started" )));
 	}
 	
 	//
@@ -574,14 +543,9 @@ TWI::TWI( void ) {
 	//
 	//	Prepare the queue as empty.
 	//
-	_queue_len = 0;
-	_queue_in = 0;
-	_queue_out = 0;
-
-	//
-	//	Initially there is no active exchange.
-	//
 	_active = NIL( transaction );
+	_tail = &( _active );
+	_free = NIL( transaction );
 }
 
 //

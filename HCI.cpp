@@ -310,12 +310,12 @@ void HCI::update_dcc_status_line( byte line ) {
 		}
 		case 2: {
 			//
-			//	Row 1, Active (Z)one and (F)ree bit buffers
+			//	Row 1, Active (P)ower/Zone and (F)ree bit buffers
 			//
-			buffer[ 1 ] = 'Z';
+			buffer[ 1 ] = 'P';
 			buffer[ 2 ] = '0' + districts.zone();
 			buffer[ 3 ] = 'F';
-			if( !backfill_byte_to_text( buffer+4, LCD_DISPLAY_STATUS_WIDTH-4, (int)stats.free_buffers())) {
+			if( !backfill_byte_to_text( buffer+4, LCD_DISPLAY_STATUS_WIDTH-4, (int)dcc_generator.free_buffers())) {
 				memset( buffer+4, HASH, LCD_DISPLAY_STATUS_WIDTH-4 );
 			}
 			_display.set_posn( 2, LCD_DISPLAY_STATUS_COLUMN );
@@ -323,21 +323,30 @@ void HCI::update_dcc_status_line( byte line ) {
 			break;
 		}
 		case 3: {
-			static bool	spinner = false;
+			static byte	opt = 0;
 
 			//
 			//	Row 3, DCC packets (T)ransmitted sent per second
 			//
-			buffer[ 1 ] = 'T';
-			if( !backfill_int_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-3, (int)stats.packets_sent())) {
-				memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
+			//	Rotate between the set of options this line shows.
+			//
+			if(( ++opt > 1 )) opt = 0;
+			switch( opt ) {
+				case 0: {
+					buffer[ 1 ] = 'T';
+					if( !backfill_int_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-2, stats.packets_sent())) {
+						memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
+					}
+					break;
+				}
+				case 1: {
+					buffer[ 1 ] = 'M';
+					if( !backfill_int_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-2, heap.free_memory())) {
+						memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
+					}
+					break;
+				}
 			}
-			
-			//
-			//	Spinner, so we can see that the firmware is still running.
-			//
-			buffer[ LCD_DISPLAY_STATUS_WIDTH-1 ] = ( spinner = !spinner )? SPACE: '.';
-			
 			//
 			//	Place the data.
 			//

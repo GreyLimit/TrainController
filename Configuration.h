@@ -15,60 +15,23 @@
 #define _CONFIGURATION_H_
 
 //
-//	Hardware Specific Configuration Definitions
-//	===========================================
+//	Include hardware definitions.
 //
-//	The following definitions are used to abstract the differences
-//	between each of the boards.
-//
-//	The Macro "SELECT_SML(s,m,l)" will be used to select alternate
-//	configuration values based on the apparent "size" of the target
-//	micro controller.  The parameter "s" represents small MCUs with
-//	2 KBytes SRAM.  "m" represents systems with between
-//	2 and 4 KBytes SRAM.  All other systems will have the "l" value
-//	applied.
-//
+#include "Hardware.h"
 
 //
-//	Pick out hardware specific configuration elements.
+//	Define, roughly, how big the memory foot print of the
+//	firmware is, exclusind the memory heap.
+//
+//	This is *absolutely* depenedent on the firmware
 //
 #if defined( __AVR_ATmega328__ )| defined( __AVR_ATmega328P__ )| defined( __AVR_ATmega328PB__ )
-//
-//	Standard Nano or Uno R3 configuration
-//	=====================================
-//
-#define HW_TITLE		"AVR ATmega328"
-
-//
-//	SRAM = 2 KBytes
-//	Arch = AVR
-//
-#define SELECT_SML(s,m,l)	s
-#define SELECT_ARCH(avr,arm)	avr
-
-
+#define STATIC_VARIABLES	750
 #elif defined( __AVR_ATmega2560__ )
-//
-//	Standard Mega 2560 configuration
-//	================================
-//
-#define HW_TITLE		"AVR ATmega2560"
-
-//
-//	SRAM = 8 KBytes
-//	Arch = AVR
-//
-#define SELECT_SML(s,m,l)	m
-#define SELECT_ARCH(avr,arm)	avr
-
+#define STATIC_VARIABLES	1000
 #else
-//
-//	Firmware has not been configured for this board.
-//
-#error "No configuration available for this board"
-
+#error "No variable space estimate available for this board"
 #endif
-
 
 
 //
@@ -110,7 +73,7 @@
 //	Arduino Mega2560 Pin Allocations
 //	================================
 //
-//	There are (currently) identical to the UNO R3 allocations
+//	These are (currently) identical to the UNO R3 allocations
 //	in order to simplify the firmware.
 //
 
@@ -149,6 +112,15 @@
 //	issues with the LCD.
 //
 #define TWI_FREQ		10
+
+//
+//	DCC Districts
+//	=============
+//
+//	2	Using the Arduino Motor Shield
+//	6	Using the bespoke backplane with Nano
+//
+#define DCC_DISTRICTS		2
 
 //
 //	ROTARY CONTROLLER
@@ -224,14 +196,13 @@
 //	PCF8575 I2C to Parallel adaptor.  The following default
 //	definitions apply to a generic 20x4 display.
 //
-
 #define LCD_DISPLAY_ROWS	4
 #define LCD_DISPLAY_COLS	20
 #define LCD_DISPLAY_ADRS	0x27
 
 //
 //	Define the macro _LCD_USE_READ_BUSY_READY_ to cause the LCD
-//	code to used the "busy ready" status flag from the LCD to time
+//	code to use the "busy ready" status flag from the LCD to time
 //	the data and instruction commands to the LCD.
 //
 //	Note:	At the moment (V0.1.7) this code is written (in the
@@ -313,8 +284,6 @@
 //	use on the stack.
 //
 #define TEXT_BUFFER			SELECT_SML(8,12,16)
-
-
 
 #endif
 

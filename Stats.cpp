@@ -10,7 +10,7 @@
 #include "Task.h"
 #include "Clock.h"
 #include "DCC.h"
-
+#include "Memory_Heap.h"
 #include "Trace.h"
 #include "Console.h"
 
@@ -84,6 +84,16 @@ void Stats::process( UNUSED( byte handle )) {
 	//
 	console.print( F( "STS idle count " ));
 	console.println( task_manager.idle_count());
+#endif
+
+#ifdef ENABLE_HEAP_STATS
+	//
+	//	Display heap stats.
+	//
+	console.print( F( "STS free heap " ));
+	console.println( (word)heap.free_memory());
+	console.print( F( "STS free block " ));
+	console.println( (word)heap.free_block());
 #endif
 }
 

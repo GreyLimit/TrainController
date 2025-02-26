@@ -273,20 +273,20 @@ private:
 	//	enable a calling system to push out a sequence of
 	//	actions asynchronously from the LCD driver function.
 	//
-	struct pending {
+	struct pending_lcd {
 		byte		value;
 		const mc_state	*program;
 		Signal		*flag;
+		pending_lcd	*next;
 	};
-	static const byte max_pending = 16;
+
 	//
 	//	This is the queue of pending bytes heading out of the
 	//	object towards the LCD.
 	//
-	struct pending	_queue[ max_pending ];
-	byte		_queue_len,
-			_queue_in,
-			_queue_out;
+	pending_lcd	*_active,
+			**_tail,
+			*_free;
 
 	//
 	//	bool queue_transfer( const mc_state *program, byte value, Signal *flag )
@@ -335,7 +335,6 @@ private:
 			*_fsm_loop;
 	byte		_fsm_data_byte,
 			_fsm_buffer;
-	Signal		*_fsm_flag;
 
 	//
 	//	Task control signal.

@@ -55,6 +55,14 @@ public:
 	//		3		days.
 	//
 	static const byte stages = 4;
+
+	//
+	//	Define constants for the various stages:
+	//
+	static const byte seconds	= 0;
+	static const byte minutes	= 1;
+	static const byte hours		= 2;
+	static const byte days		= 3;
 	
 private:
 	//
@@ -66,29 +74,29 @@ private:
 	//
 	//	Here are the counters.
 	//
-	byte	_stage[ stages ];
+	byte		_stage[ stages ];
+	word		_elapsed;
 
 	//
 	//	Here is the flag required as part of the scheduling
 	//	process.
 	//
-	Signal	_flag;
+	Signal		_flag;
 
 	//
 	//	The TOD Flag Manager components.
 	//
-	struct pending {
-		word	left;
-		Signal	*flag;
-		pending	*next;
+	struct pending_tod {
+		word		left;
+		Signal		*flag;
+		pending_tod	*next;
 	};
 	
 	//
 	//	flag records and pointers.
 	//
-	pending	_pending[ TIME_OF_DAY_TASKS ],
-		*_active,
-		*_free;
+	pending_tod	*_active,
+			*_free;
 
 public:
 	//
@@ -102,6 +110,14 @@ public:
 	//
 	byte read( byte index );
 	bool write( byte index, byte value );
+
+	//
+	//	Provide an *indication* of time since boot
+	//	in seconds.  This value, an unsigned 16 bit word
+	//	will wrap to 0 every 18 hours, 12 minutes and
+	//	(roughly) 15 seconds.
+	//
+	word elapsed( void );
 
 	//
 	//	Add a flag to the list of pending flag updates.  The

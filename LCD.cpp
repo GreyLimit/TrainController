@@ -20,8 +20,9 @@
 //
 //	Environment for this module
 //
-#include "Code_Assurance.h"
 #include "LCD.h"
+#include "Code_Assurance.h"
+#include "Memory_Heap.h"
 #include "Trace.h"
 #include "Critical.h"
 #include "TWI.h"
@@ -135,22 +136,42 @@ bool LCD::queue_transfer( const mc_state *program, byte value, Signal *flag ) {
 	ASSERT( program != NIL( const mc_state ));
 	ASSERT( flag != NIL( Signal ));
 	
-	if( _queue_len >= max_pending ) return( false );
-	
-	_queue[ _queue_in ].value = value;
-	_queue[ _queue_in ].program = program;
-	_queue[ _queue_in ].flag = flag;
-	
-	if(( _queue_in += 1 ) >= max_pending ) _queue_in = 0;
+	pending_lcd	*ptr;
 
 	//
-	//	Finally increase the number of pending records
-	//	and if this results in a queue of 1 entry then
-	//	we need to release the control flag to restart
-	//	the FSM.
+	//	Re-use or create a new record.
 	//
-	if(( _queue_len += 1 ) == 1 ) _flag.release();
+	if(( ptr = _free )) {
+		_free = ptr->next;
+	}
+	else {
+		if(!( ptr = new pending_lcd )) return( false );
+	}
 	
+	//
+	//	Fill in the pending record.
+	//
+	ptr->value = value;
+	ptr->program = program;
+	ptr->flag = flag;
+	ptr->next = NIL( pending_lcd );
+	
+	//
+	//	Add to the queue of pending requests.
+	//
+	*_tail = ptr;
+	_tail = &( ptr->next );
+	
+	//
+	//	Do we need to release the control flag to restart
+	//	the FSM.  We know this if the new pending record
+	//	is also the head of the queue.
+	//
+	if( _active == ptr ) _flag.release();
+	
+	//
+	//	Success!
+	//
 	return( true );
 }
 
@@ -194,9 +215,10 @@ LCD::LCD( void ) {
 	//	Empty the pending queue in preparation for the
 	//	initial initialisation code to execute.
 	//
-	_queue_len = 0;
-	_queue_in = 0;
-	_queue_out = 0;
+	_active = NIL( pending_lcd );
+	_tail = &_active;
+	_free = NIL( pending_lcd );
+	
 	//
 	//	Set the back light off and the state variables
 	//	as empty.
@@ -204,6 +226,7 @@ LCD::LCD( void ) {
 	_back_light = 0;
 	_display_state = 0;
 	_entry_state = 0;
+	
 	//
 	//	Initialise the program machine which controls
 	//	data transmission to the LCD
@@ -324,19 +347,20 @@ main_loop:
 			//	we load up the necessary components and run the
 			//	program.
 			//
-			if( _queue_len ) {
+			if( _active ) {
 				//
 				//	Load the _fsm_ variables with the required
 				//	data to run this job and remove the job from
 				//	the queue.
 				//
-				_fsm_data_byte = _queue[ _queue_out ].value;
-				_fsm_instruction = _queue[ _queue_out ].program;
-				_fsm_flag = _queue[ _queue_out ].flag;
+				_fsm_data_byte = _active->value;
+				_fsm_instruction = _active->program;
 
-				if(( _queue_out += 1 ) >= max_pending ) _queue_out = 0;
-				_queue_len--;
-
+				//
+				//	Return to the FSM to step through the new
+				//	program.  We do not drop the pending record
+				//	until the actions are completed.
+				//
 				goto main_loop;
 			}
 			//
@@ -588,31 +612,30 @@ main_loop:
 				//	So, we have to handle this directly
 				//	or the firmware *will* lock up.
 				//
-				//	Did the "in flight" action have a signal?
+				//	Unroll all the pending actions
+				//	releasing the flags.
 				//
-				_fsm_flag->release();
-				//
-				//	Unroll all the pending actions checking
-				//	the flag pointers.
-				//
-				while( _queue_len ) {
-					_queue[ _queue_out ].flag->release();
-					if(( _queue_out += 1 ) >= max_pending ) _queue_out = 0;
-					_queue_len--;
+				while( _active ) {
+					pending_lcd	*ptr;
+					
+					//
+					//	Unhook this record
+					//
+					ptr = _active;
+					_active = ptr->next;
+					//
+					//	Release the flag.
+					//
+					ptr->flag->release();
 				}
-				//
-				//	Reset everything to "initial values"
-				//
-				_queue_len = 0;
-				_queue_in = 0;
-				_queue_out = 0;
+				_tail = &( _active );
+				
 				//
 				//	Now we execute the "reset program" to try
 				//	restore control of the LCD.
 				//
 				_fsm_instruction = mc_reset_program;
 				_fsm_loop = NIL( mc_state );
-				_fsm_flag = NIL( Signal );
 			}
 			goto main_loop;
 		}
@@ -644,13 +667,27 @@ main_loop:
 		}
 		case mc_finish_up: {
 			TRACE_LCD( console.println( F( "LCD mc_finish_up" )));
+			pending_lcd	*ptr;
 			
 			//
 			//	This is the final step in the execution of a command
 			//	and is, essentially, here to signal to the owner of
 			//	the action that it is complete (one way or the other).
 			//
-			if( _fsm_flag ) _fsm_flag->release();
+			_active->flag->release();
+			
+			//
+			//	Now we release the control record back to the free queue
+			//
+			ptr = _active;
+			if(!( _active = ptr->next )) _tail = &( _active );
+			ptr->next = _free;
+			_free = ptr;
+			
+			//
+			//	Finally set into the final action (oyght to be the
+			//	idle action).
+			//
 			_fsm_instruction++;
 			goto main_loop;
 		}

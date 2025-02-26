@@ -11,7 +11,7 @@
 //	Boot Splash Screen
 //	==================
 //
-#define SPLASH_LINE_1	"Train Controller " VERSION_NUMBER
+#define SPLASH_LINE_1	VERSION_NAME " V" VERSION_NUMBER
 #define SPLASH_LINE_2	"MCU: " HW_TITLE
 #define SPLASH_LINE_3	"Baud: " SERIAL_BAUD_RATE_STR
 #define SPLASH_LINE_4	"Build: " __DATE__

@@ -39,22 +39,14 @@ Function::cache *Function::find( word target ) {
 		//
 		if( target == ptr->target ) {
 			//
-			//	Yes, so move to top of the list (if not already there)
-			//	so that access to this record is as quick as possible
-			//	for subsequent requests.
+			//	Yes, so move to top of the list so that
+			//	access to this record is as quick as
+			//	possible for subsequent requests.
 			//
 			if( _cache != ptr ) {
-				//
-				//	Detach from the list.
-				//
-				if(( *( ptr->prev ) = ptr->next )) ptr->next->prev = ptr->prev;
-				//
-				//	Add to head of list.
-				//
+				*adrs = ptr->next;
 				ptr->next = _cache;
-				_cache->prev = &( ptr->next );
 				_cache = ptr;
-				ptr->prev = &_cache;
 			}
 			//
 			//	Return the pointer to the desired cache record.
@@ -67,26 +59,34 @@ Function::cache *Function::find( word target ) {
 		last = ptr;
 		adrs = &( ptr->next );
 	}
+
 	//
-	//	Nothing found, so we re-use the oldest record in the list.
-	//	Start by unlinking it from the end of the list.
+	//	Nothing found.
 	//
-	*( last->prev ) = NULL;
-	
+	//	Try to allocate a new record..
 	//
-	//	Replace with new target and empty function settings (since
-	//	we know nothing about them).
+	if(( ptr = new cache )) {
+		//
+		//	 ...and fill it in as empty.
+		//
+		ptr->target = target;
+		for( byte i = 0; i < bit_array; ptr->bits[ i++ ] = 0 );
+		ptr->next = _cache;
+		_cache = ptr;
+		
+		//
+		//	Done.
+		//
+		return( ptr );
+	}
+
+	//
+	//	re-purpose the last record in the queue.  It'll get
+	//	moved to the head of the queue on the next call.
 	//
 	last->target = target;
 	for( byte i = 0; i < bit_array; last->bits[ i++ ] = 0 );
-	
-	//
-	//	Link onto head of cache.
-	//
-	last->next = _cache;
-	_cache->prev = &( last->next );
-	_cache = last;
-	last->prev = &_cache;
+
 	//
 	//	Done.
 	//
@@ -95,39 +95,10 @@ Function::cache *Function::find( word target ) {
 
 
 //
-//	Function to initialise the cache records empty.
-//
-//	We will "pre-fill" the cache with empty records so that the code can
-//	always assume that there are records in the cache, because there are.
+//	Constructor to start system as empty.
 //
 Function::Function( void ) {
-	cache	**tail,
-		*ptr;
-	
-	tail = &_cache;
-	for( byte i = 0; i < cache_size; i++ ) {
-		//
-		//	Note current record.
-		//
-		ptr = &( _record[ i ]);
-		
-		//
-		//	Empty the record.
-		//
-		ptr->target = 0;
-		for( byte j = 0; j < bit_array; ptr->bits[ j++ ] = 0 );
-		
-		//
-		//	Link in the record.
-		//
-		*tail = ptr;
-		ptr->prev = tail;
-		tail = &( ptr->next );
-	}
-	//
-	//	Finally we terminate the list.
-	//
-	*tail = NULL;
+	_cache = NIL( cache );
 }
 
 //

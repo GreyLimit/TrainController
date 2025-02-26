@@ -10,6 +10,7 @@
 
 #include "SPI.h"
 #include "Code_Assurance.h"
+#include "Memory_Heap.h"
 #include "Errors.h"
 #include "Stats.h"
 
@@ -105,12 +106,11 @@ void SPI_Device::start_trans( void ) {
 	//	to be started and its target is valid.
 	//
 	ASSERT( _active != NIL( spi_trans ));
-	ASSERT( _active->target < _targets );
 
 	//
 	//	Pointer to the new target.
 	//
-	spi_target *q = &( _target[ _active->target ]);
+	register spi_target *q = _active->target;
 
 	//
 	//	We now load the SPI hardware with our configuration
@@ -165,22 +165,11 @@ void SPI_Device::stop_trans( void ) {
 	//	to be stopped.
 	//
 	ASSERT( _active != NIL( spi_trans ));
-	ASSERT( _active->target < _targets );
-
-	//
-	//	Pointer to the target configuration.
-	//
-	spi_target *q = &( _target[ _active->target ]);
-
-	//
-	//	For juggling the queues.
-	//
-	spi_trans	*t;
 
 	//
 	//	Disable the target chip SPI interface
 	//
-	q->pin->set( !q->enable );
+	_active->target->pin->set( !_active->target->enable );
 
 	//
 	//	Shutdown the SPI interface.
@@ -195,10 +184,11 @@ void SPI_Device::stop_trans( void ) {
 	//
 	//	Remove from the active list and add to free list.
 	//
-	t = (spi_trans *)_active;
-	if(( _active = t->next ) == NIL( spi_trans )) _tail = &_active;
-	t->next = (spi_trans *)_free;
-	_free = t;
+	spi_trans *ptr = (spi_trans *)_active;
+	
+	if(( _active = ptr->next ) == NIL( spi_trans )) _tail = &_active;
+	ptr->next = (spi_trans *)_free;
+	_free = ptr;
 
 	//
 	//	If there is another transaction pending
@@ -221,18 +211,13 @@ SPI_Device::SPI_Device( SPI_Registers *device ) {
 	//	Save our hardware address and clear targets table.
 	//
 	_dev = device;
-	_targets = 0;
 	
 	//
 	//	Organise the transactions queue.
 	//
-	_free = NIL( spi_trans );
-	for( byte i = 0; i < spi_queue_size; i++ ) {
-		_queue[ i ].next = (spi_trans *)_free;
-		_free = &( _queue[ i ]);
-	}
 	_active = NIL( spi_trans );
 	_tail = &_active;
+	_free = NIL( spi_trans );
 	
 	//
 	//	We are ready to go.
@@ -255,17 +240,12 @@ word SPI_Device::hz( unsigned long clock ) {
 
 
 //
-//	Add a new target to the SPI manager.  This will return
-//	true on success with an arbitrary target handle or
-//	false if there was an issue with the configuration.
-//
-//	target		Returned target number for this SPI
-//			attached device.
+//	Add a new target to the SPI manager.
 //
 //	speed		The bus speed the device requires in
-//			units of 1024 Hz.  The final speed
-//			configured will be no faster than this,
-//			but could be much slower.
+//			units of 1024 Hz.  This gives a bus
+//			speed from (approximately) 1 KHz upto
+//			65 MHz.
 //
 //	lsb		True if the remote device is least
 //			significant bit first, false if it is
@@ -278,86 +258,83 @@ word SPI_Device::hz( unsigned long clock ) {
 //	enable		The "state" to set the pin to enable
 //			the target device.
 //
-bool SPI_Device::new_target( byte *target, word speed, bool lsb, bool cpol, bool cpha, Pin_IO *pin, bool enable ) {
+//	Returns the address of a control record for this device
+//	on success, or NIL if there was an issue with the definition.
+//
+//	This is dynamically created and can be released if not required
+//	again (unliekly)
+//
+SPI_Device::spi_target *SPI_Device::new_target( word speed, bool lsb, bool cpol, bool cpha, Pin_IO *pin, bool enable ) {
 
-	STACK_TRACE( "bool SPI_Device::new_target( byte *target, word speed, bool cpol, bool cpha, Pin_IO *pin, bool enable )" );
+	STACK_TRACE( "SPI_Device::spi_target *SPI_Device::new_target( word speed, bool lsb, bool cpol, bool cpha, Pin_IO *pin, bool enable )" );
 	
-	ASSERT( target != NIL( byte ));
 	ASSERT( pin != NIL( Pin_IO ));
 
-	spi_target	*t;
-
-	//
-	//	Check target table availability and assign an entry
-	//	if space is available.
-	//
-	if( _targets >= spi_max_targets ) {
-		errors.log_error( SPI_TARGET_TABLE_FULL, _targets );
-		return( false );
-	}
-	//
-	//	Save new target number and address of target record.
-	//
-	t = &( _target[( *target = _targets )]);
+	spi_target	*target;
+	SPI_Registers	configuration;
 
 	//
 	//	Set the clock speed/divisor
 	//
-	if( !set_clock( &( t->configuration ), speed )) {
+	if( !set_clock( &configuration, speed )) {
 		errors.log_error( SPI_INVALID_CLOCK_SPEED, speed );
-		return( false );
+		return( NIL( spi_target ));
 	}
 
 	//
 	//	Set bit ordering.
 	//
-	t->configuration.dord( lsb );
+	configuration.dord( lsb );
 
 	//
 	//	Set up clock characteristics...
 	//
-	t->configuration.cpol( cpol );
-	t->configuration.cpha( cpha );
+	configuration.cpol( cpol );
+	configuration.cpha( cpha );
 
 	//
 	//	Finally we pre-set the interrupt and SPI enable bits
 	//	so that loading the configuration automatically starts
 	//	the SPI interface.
 	//
-	t->configuration.spie( true );
-	t->configuration.spe( true );
+	configuration.spie( true );
+	configuration.spe( true );
 
 	//
-	//	Save the chip enable details and perform initial
+	//	Create new target record and copy in the configuration.
+	//
+	if(!( target = new spi_target )) return( NIL( spi_target ));
+
+	//
+	//	Save the connection details.
+	//	Save pin chip enable details and perform initial
 	//	chip disable.
 	//
-	t->pin = pin;
-	t->enable = enable;
+	target->configuration.load( &configuration );
+	target->pin = pin;
+	target->enable = enable;
+	pin->output();
 	pin->set( !enable );
 	
 	//
-	//	Definitely done now, increase targets count before
-	//	returning.
+	//	Done now.
 	//
-	_targets++;
-	return( true );
+	return( target );
 }
 
 //
 //	Exchange data with a registered target.  Returns true
 //	if the request is queued, false otherwise.
 //
-bool SPI_Device::exchange( byte target, byte send, byte recv, byte *buffer, Signal *flag ) {
+bool SPI_Device::exchange( SPI_Device::spi_target *target, byte send, byte recv, byte *buffer, Signal *flag ) {
 
-	STACK_TRACE( "bool SPI_Device::exchange( byte target, byte send, byte recv, byte *buffer, Signal *flag )" );
+	STACK_TRACE( "bool SPI_Device::exchange( SPI_Device::spi_target *target, byte send, byte recv, byte *buffer, Signal *flag )" );
 
-	spi_trans	*t;
-	bool		start;
+	spi_trans	*ptr;
 
 	ASSERT( flag != NIL( Signal ));
 	ASSERT( buffer != NIL( byte ));
-	ASSERT( target < _targets );
-	ASSERT(( send + recv ) > 0 );
+	ASSERT( target != NIL( spi_target ));
 
 	//
 	//	Get a free record that we can build the request into.
@@ -365,22 +342,25 @@ bool SPI_Device::exchange( byte target, byte send, byte recv, byte *buffer, Sign
 	{
 		Critical code;
 
-		if(( t = (spi_trans *)_free ) == NIL( spi_trans )) {
-			errors.log_error( SPI_QUEUE_FULL, target );
-			return( false );
-		}
-		_free = t->next;
+		//
+		//	Critical code because the ISR also modifies
+		//	this data.
+		//
+		if(( ptr = (spi_trans *)_free )) _free = ptr->next;
+	}
+	if( ptr == NIL( spi_trans )) {
+		if(!( ptr = new spi_trans )) return( false );
 	}
 
 	//
 	//	Fill in the record...
 	//
-	t->target = target;
-	t->send = send;
-	t->recv = recv;
-	t->sending = t->receiving = buffer;
-	t->flag = flag;
-	t->next = NIL( spi_trans );
+	ptr->target = target;
+	ptr->send = send;
+	ptr->recv = recv;
+	ptr->sending = ptr->receiving = buffer;
+	ptr->flag = flag;
+	ptr->next = NIL( spi_trans );
 
 	//
 	//	Now append to the end of the queue.
@@ -389,22 +369,16 @@ bool SPI_Device::exchange( byte target, byte send, byte recv, byte *buffer, Sign
 		Critical code;
 
 		//
-		//	Remember if the queue was empty before we added
-		//	this request.
-		//
-		start = ( _active == NIL( spi_trans ));
-
-		//
 		//	Link this into the queue.
 		//
-		*_tail = t;
-		_tail = (volatile spi_trans **)&( t->next );
+		*_tail = ptr;
+		_tail = (volatile spi_trans **)&( ptr->next );
 
 		//
 		//	Now, if the queue *was* empty then we need to
 		//	nudge the SPI system into performing it.
 		//
-		if( start ) start_trans();
+		if( _active == ptr ) start_trans();
 	}
 
 	//

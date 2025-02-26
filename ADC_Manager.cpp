@@ -7,6 +7,7 @@
 //
 #include "ADC_Manager.h"
 #include "Code_Assurance.h"
+#include "Memory_Heap.h"
 #include "Trace.h"
 #include "Stats.h"
 
@@ -34,19 +35,15 @@ void ADC_Manager::start_conversion( byte pin ) {
 	//
 	//	That is all there is to it.
 	//
-}	
+}
 
 //
 //	Constructor, only set up the internal data structures.
 //
 ADC_Manager::ADC_Manager( void ) {
-	_active = NIL( pending );
+	_active = NIL( pending_adc );
 	_tail = &_active;
-	_free = NIL( pending );
-	for( byte i = 0; i < pending_queue; i++ ) {
-		_pending[ i ].next = _free;
-		_free = &( _pending[ i ]);
-	}
+	_free = NIL( pending_adc );
 }
 
 //
@@ -71,7 +68,7 @@ bool ADC_Manager::read( byte pin, Signal *flag, word *result ) {
 
 	STACK_TRACE( "bool ADC_Manager::read( byte pin, Signal *flag, word *result )" );
 
-	pending		*ptr;
+	pending_adc	*ptr;
 	bool		initiate;
 
 	TRACE_ADC( console.print( F( "ADC read pin " )));
@@ -80,27 +77,37 @@ bool ADC_Manager::read( byte pin, Signal *flag, word *result ) {
 	TRACE_ADC( console.println( flag->identity()));
 
 	//
-	//	Can we schedule this?
+	//	Have we got (can we get) a spare pending record.
 	//
-	if(!( ptr = _free )) return( false );
+	if(( ptr = _free )) {
+		//
+		//	Re-use an old one.
+		//
+		_free = ptr->next;
+	}
+	else {
+		//
+		//	Try to mint a free new one.
+		//
+		if(!( ptr = new pending_adc )) return( false );
+	}
 
 	//
 	//	Will we need to "kick off" the conversion?
 	//
-	initiate = ( _active == NIL( pending ));
+	initiate = ( _active == NIL( pending_adc ));
 
 	//
-	//	Grab a free pending record and set it up.
+	//	Fill in the pending record.
 	//
-	_free = ptr->next;
 	ptr->pin = pin;
 	ptr->save = result;
 	ptr->flag = flag;
-	ptr->next = NIL( pending );
+	ptr->next = NIL( pending_adc );
 	*_tail = ptr;
 	_tail = &( ptr->next );
 
-	ASSERT( _active != NIL( pending ));
+	ASSERT( _active != NIL( pending_adc ));
 
 	//
 	//	Fire off conversion if required.
@@ -120,12 +127,12 @@ void ADC_Manager::process( UNUSED( byte handle )) {
 
 	STACK_TRACE( "void ADC_Manager::process( byte handle )" );
 
-	pending	*ptr;
+	pending_adc	*ptr;
 
 	//
 	//	Was this a valid conversion?
 	//
-	if(( ptr = _active ) == NIL( pending )) {
+	if(( ptr = _active ) == NIL( pending_adc )) {
 		//
 		//	Nope.
 		//
@@ -141,7 +148,7 @@ void ADC_Manager::process( UNUSED( byte handle )) {
 	//
 	//	Remove from the list.
 	//
-	if(( _active = ptr->next ) == NIL( pending )) _tail = &_active;
+	if(( _active = ptr->next ) == NIL( pending_adc )) _tail = &_active;
 	
 	//
 	//	Save the reading and signal that new reading is ready.

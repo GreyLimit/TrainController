@@ -1,14 +1,23 @@
 //
-//	Memory_Heap.cpp		The declaration of  a generic
-//	===============		memory heap allocation (and
-//				deallocation) system designed
-//	to be a used in collaboration with C++ new() and delete().
+//	Memory_Heap.h
+//	=============
+//
+//	The definition of  a generic memory heap allocation (and
+//	deallocation) system designed to be a used in place of
+//	the C++ new() and delete().
+//
+//	Note:
+//
+//	This system is explicitly granted a fixed memory space
+//	upon initialisation and also provides a blanket "memory
+//	reset" function which sets the memory provided back to
+//	the empty state.
 //
 
 
 #include "Memory_Heap.h"
 #include "Errors.h"
-
+#include "Code_Assurance.h"
 #include "Trace.h"
 #ifdef DEBUGGING_ENABLED
 #include "Console.h"
@@ -71,9 +80,8 @@ Memory_Heap::storage_unit Memory_Heap::find( storage_unit rqd ) {
 		if( is_flag_set( sz )) {
 			//
 			//	Found a block with the flag set
-			//	(de-allocated), so remove the
-			//	flag leaving just the size to make
-			//	testing and moving on simpler.
+			//	(de-allocated), so extract the size
+			//	to make testing and moving on simpler.
 			//
 			sz = block_size( sz );
 			//
@@ -92,8 +100,7 @@ Memory_Heap::storage_unit Memory_Heap::find( storage_unit rqd ) {
 				//	Yes, so do this now as it does
 				//	not cost much at this point in time.
 				//
-				sz += block_size( nxt );
-				_heap[ look ] = set_flag( sz );
+				_heap[ look ] = set_flag(( sz += block_size( nxt )));
 			}
 			//
 			//	If this is large enough but smaller
@@ -120,6 +127,7 @@ Memory_Heap::Memory_Heap( void ) {
 	//	Initialise heap space as empty.
 	//
 	for( storage_unit i = 0; i < size; _heap[ i++ ] = 0 );
+	_free = size;
 	//
 	//	Done
 	//
@@ -149,11 +157,12 @@ void *Memory_Heap::alloc( size_t rqst ) {
 	//
 	//	Generally, do we consider this a valid request?
 	//
-	if(( rqd < sizeof( storage_unit ))||( rqd >= size )) {
-		errors.log_error( HEAP_ERR_INVALID_ALLOCATION, rqst );
+	if(( rqd < 2 )||( rqd >= size )) {
+		errors.log_error( HEAP_ERR_INVALID_ALLOCATION, (word)rqd );
 		return( NIL( void ));
 	}
 	
+retry_alloc:
 	//
 	//	Can we find something already de-allocated?
 	//
@@ -165,18 +174,31 @@ void *Memory_Heap::alloc( size_t rqst ) {
 		//	be reused.  If we are using less than half of it
 		//	then we will break the block up.
 		//
+		// JEFF
+		//	With the introduction of the recovery mechanism
+		//	this approach of *deliberately* over allocating
+		//	memory to avoid creating massive fragmentation
+		//	might be a poor choice of algorithm.
+		//
+		//	Need to think this through; my immediate thought
+		//	is that only memory which is to be actually used
+		//	should be released and even the smallest unused
+		//	piece should be kept int he free list.
+		//
 		if( rqd < ( sz >> 1 )) {
 			//
 			//	Sub divide the space.
 			//
 			_heap[ fnd + rqd ] = set_flag( sz - rqd );
 			_heap[ fnd ] = reset_flag( rqd );
+			_free -= rqd;
 		}
 		else {
 			//
 			//	Allocate whole space as once piece.
 			//
 			_heap[ fnd ] = reset_flag( sz );
+			_free -= sz;
 		}
 	}
 	else {
@@ -191,19 +213,29 @@ void *Memory_Heap::alloc( size_t rqst ) {
 		//
 		if( rqd >= ( size - fnd )) {
 			//
-			//	We cannot allocate ALL of the space, we have
-			//	to leave at least one '0' length at the end.
+			//	There is not enough space for the allocation.
+			//	lets try to release some memory and try again
+			//	if that is successful.
 			//
-			errors.log_error( HEAP_ERR_OUT_OF_MEMORY, rqd );
+			if( _recovery->request_recovery()) goto retry_alloc;
+
+			//
+			//	No recovery successful, produce the error.
+			//
+			errors.log_error( HEAP_ERR_OUT_OF_MEMORY, (word)rqd );
 
 			TRACE_HEAP( console.println( F( "MHP ret 0" )));
 
 			return( NIL( void ));
 		}
 		//
-		//	All good.
+		//	Allocation fits so we over write the zero length
+		//	at the end of the allocations, and write a new one
+		//	further down the memory.
 		//
 		_heap[ fnd ] = rqd;
+		_heap[ fnd + rqd ] = 0;
+		_free -= rqd;
 	}
 	//
 	//	Return the allocated memory remembering that the caller
@@ -248,6 +280,7 @@ void Memory_Heap::free( void *block ) {
 			//	it is called in alloc(). 
 			//
 			_heap[ look ] = set_flag( sz );
+			_free += sz;
 		}
 	}
 	else {
@@ -271,13 +304,109 @@ void Memory_Heap::erase( void ) {
 	//	Simply set the whole heap to zeros.
 	//
 	for( storage_unit i = 0; i < size; _heap[ i++ ] = 0 );
+	_free = size;
+}
+
+//
+//	Return the amount of free space in the heap, though not
+//	necessarily the largest free space.
+//
+Memory_Heap::storage_unit Memory_Heap::free_memory( void ) {
+
+	STACK_TRACE( "Memory_Heap::storage_unit Memory_Heap::free_memory( void )" );
+
+	//
+	//	Remember to deduct 1 from the free count as
+	//	there is a managment value to account for.
+	//
+	return(( _free - 1 ) * sizeof( storage_unit ));
+}
+
+//
+//	Return the largest memory block available.  This might be
+//	the same as the value free_memory() returns, but is in
+//	no garanteed to be so.
+//
+//	This routine will be slow, so do not include in any time
+//	critical activity or use with any real frequency.
+//
+Memory_Heap::storage_unit Memory_Heap::free_block( void ) {
+
+	STACK_TRACE( "Memory_Heap::storage_unit Memory_Heap::free_block( void )" );
+
+	storage_unit	best, look, test;
+
+	//
+	//	Start at the beginning with no best value.
+	//	
+	best = 0;
+	look = 0;
+	//
+	//	Step through the allocations checking status and size.
+	//
+	while(( test = _heap[ look ])) {
+		//
+		//	Free block?
+		//
+		if( is_flag_set( test )) {
+			//
+			//	Remove flag and compare.
+			//
+			test = reset_flag( test );
+			if( test > best ) best = test;
+		}
+		//
+		//	move on to next block.
+		//
+		look += test;
+	}
+	//
+	//	Finally check the free space at the end of the memory.
+	//
+	if(( test = size - look ) > best ) best = test;
+	//
+	//	Remember to deduct 1 from the best count as
+	//	there is a managment value to allow for.
+	//
+	return(( best - 1 ) * sizeof( storage_unit ));
+}
+
+//
+//	Classes which are prepared to respond to the memory
+//	recovery request need to register themselves through
+//	this API call.
+//
+void Memory_Heap::recover_from( Memory_Recovery *user ) {
+
+	STACK_TRACE( "void Memory_Heap::recover_from( Memory_Recovery *user )" );
+
+	ASSERT( user != NIL( Memory_Recovery ));
+
+	_recovery = user->linkup( _recovery );
+}
+
+
+//
+//	Declare the replacements to the "built in" new and delete operators.
+//
+void *operator new( size_t bytes ) {
+
+	STACK_TRACE( "void *operator new( size_t bytes )" );
+
+	return( heap.alloc( bytes ));
+}
+void operator delete( void *ptr ) {
+
+	STACK_TRACE( "void operator delete( void *ptr )" );
+
+	heap.free( ptr );
 }
 
 
 //
 //	Declare the memory heap itself.
 //
-extern Memory_Heap heap;
+Memory_Heap heap;
 
 
 //

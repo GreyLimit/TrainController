@@ -17,22 +17,6 @@
 #include "Pin_IO.h"
 
 //
-//	Define a queue size of the SPI device, if not already
-//	defined.
-//
-#ifndef SPI_QUEUE_SIZE
-#define SPI_QUEUE_SIZE 4
-#endif
-
-//
-//	Define the maximum number of SPI targets, per SPI device,
-//	that the manager can control.
-//
-#ifndef SPI_MAX_TARGETS
-#define SPI_MAX_TARGETS	4
-#endif
-
-//
 //	Define a class to map onto the SPI hardware registers
 //	with a set of routines for their manipulation.
 //
@@ -334,15 +318,26 @@ public:
 //	multiple IO requests through it.
 //
 class SPI_Device {
-private:
+public:
 	//
-	//	Define the internal data structures used by the SPI
-	//	manager to synchronise activities and work towards
-	//	keeping the SPI device fully utilised.
+	//	Define a structure to hold the data for a specific
+	//	target device.
 	//
-	static const byte spi_queue_size = SPI_QUEUE_SIZE;
-	static const byte spi_max_targets = SPI_MAX_TARGETS;
+	struct spi_target {
+		//
+		//	This will be the template which is loaded into
+		//	SPI hardware to configure it for this device.
+		//
+		SPI_Registers	configuration;
+		//
+		//	The pin used to enable the target chip and the
+		//	value required to enable it (typically this are
+		//	active low connections, so this would be false).
+		Pin_IO		*pin;
+		bool		enable;
+	};
 
+private:
 	//
 	//	Declare a static constant which is our base clock
 	//	speed expressed in the KHz range used by this module.
@@ -370,30 +365,6 @@ private:
 	SPI_Registers	*_dev;
 
 	//
-	//	Define a structure to hold the "registered" targets within
-	//	the manager.
-	//
-	struct spi_target {
-		//
-		//	This will be the template which is loaded into
-		//	SPI hardware to configure it for this device.
-		//
-		SPI_Registers	configuration;
-		//
-		//	The pin used to enable the target chip and the
-		//	value required to enable it (typically this are
-		//	active low connections, so this would be false).
-		Pin_IO		*pin;
-		bool		enable;
-	};
-
-	//
-	//	The table of configured targets
-	//
-	spi_target	_target[ spi_max_targets ];
-	byte		_targets;
-
-	//
 	//	Define the "packing byte" value used when empty data
 	//	needs to be transmitted to facilitate the reading of
 	//	a reply from the SPI attached device.
@@ -405,8 +376,8 @@ private:
 	//	active.
 	//
 	struct spi_trans {
-		byte		target,		// The index of the target to use.
-				send,		// Byte to send to the target.
+		spi_target	*target;	// The target to use.
+		byte		send,		// Byte to send to the target.
 				recv,		// Bytes to receive from the target.
 				*sending,	// Where we read data from..
 				*receiving;	// and write it to.
@@ -414,11 +385,6 @@ private:
 		spi_trans	*next;		// Link to next request.
 	};
 
-	//
-	//	Define the set of records which will make up the queue.
-	//
-	spi_trans		_queue[ spi_queue_size ];
-	
 	//
 	//	Here are the pointers to the various queues.
 	//
@@ -462,12 +428,7 @@ public:
 	static word hz( unsigned long clock );
 
 	//
-	//	Add a new target to the SPI manager.  This will return
-	//	true on success with an arbitrary target handle or
-	//	false if there was an issue with the configuration.
-	//
-	//	target		Returned target number for this SPI
-	//			attached device.
+	//	Add a new target to the SPI manager.
 	//
 	//	speed		The bus speed the device requires in
 	//			units of 1024 Hz.  This gives a bus
@@ -485,13 +446,19 @@ public:
 	//	enable		The "state" to set the pin to enable
 	//			the target device.
 	//
-	bool new_target( byte *target, word speed, bool lsb, bool cpol, bool cpha, Pin_IO *pin, bool enable );
+	//	Returns the address of a control record for this device
+	//	on success, or NIL if there was an issue with the definition.
+	//
+	//	This is dynamically created and can be released if not required
+	//	again (unliekly)
+	//
+	spi_target *new_target( word speed, bool lsb, bool cpol, bool cpha, Pin_IO *pin, bool enable );
 
 	//
 	//	Exchange data with a registered target.  Returns true
 	//	if the request is queued, false otherwise.
 	//
-	bool exchange( byte target, byte send, byte recv, byte *buffer, Signal *flag );
+	bool exchange( spi_target *target, byte send, byte recv, byte *buffer, Signal *flag );
 
 	//
 	//	Exchange a single byte with the attached device.

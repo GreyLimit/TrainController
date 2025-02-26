@@ -197,6 +197,21 @@
 #define CLOCK_ISR_DROPPED		121
 
 //
+//	DCC decoder FSM Errors and
+//	Bit identification and buffer errors
+//
+#define BIT_BUFFER_OVERFLOW		130
+#define DCCFSM_PREAMBLE_TRUNCATED	131
+#define DCCFSM_PARITY_ERROR		132
+#define DCCFSM_OVERFLOW_ERROR		133
+//	#define BIT_BUFFER_OVERFLOW_BREAK	0
+//	#define BIT_BUFFER_OVERFLOW_ONE		1
+//	#define BIT_BUFFER_OVERFLOW_ZERO	-1
+
+//
+//
+
+//
 //	Programming error abort.
 //
 #define PROGRAMMER_ERROR_ABORT		200

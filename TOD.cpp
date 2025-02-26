@@ -10,6 +10,7 @@
 #include "Task.h"
 #include "Clock.h"
 #include "Critical.h"
+#include "Memory_Heap.h"
 
 #ifdef DEBUGGING_ENABLED
 #include "Console.h"
@@ -33,15 +34,13 @@ TOD::TOD( void ) {
 	//	The TOD values.
 	//
 	for( byte i = 0; i < stages; _stage[ i++ ] = 0 );
+	_elapsed = 0;
+	
 	//
 	//	The pending signals data.
 	//
-	_active = NIL( pending );
-	_free = NIL( pending );
-	for( byte i = 0; i < TIME_OF_DAY_TASKS; i++ ) {
-		_pending[ i ].next = _free;
-		_free = &( _pending[ i ]);
-	}
+	_active = NIL( pending_tod );
+	_free = NIL( pending_tod );
 }
 
 //
@@ -81,6 +80,16 @@ bool TOD::write( byte index, byte value ) {
 }
 
 //
+//	Provide an *indication* of time since boot
+//	in seconds.  This value, an unsigned 16 bit word
+//	will wrap to 0 every 18 hours, 12 minutes and
+//	(roughly) 15 seconds.
+//
+word TOD::elapsed( void ) {
+	return( _elapsed );
+}
+
+//
 //	Add a flag to the list of pending flag updates.  The
 //	duration is specified in whole seconds upto 65535
 //	seconds into the future.  There is no "time of day"
@@ -97,26 +106,28 @@ bool TOD::add( word duration, Signal *flag ) {
 	TRACE_TOD( console.print( F( " flag " )));
 	TRACE_TOD( console.println( flag->identity()));
 
-	pending	*ptr, **adrs, *look;
+	pending_tod	*ptr, **adrs, *look;
 
 	if(( ptr = _free )) {
 		_free = ptr->next;
-		ptr->left = duration;
-		ptr->flag = flag;
-		adrs = &_active;
-		while(( look = *adrs )) {
-			if( ptr->left < look->left ) {
-				look->left -= ptr->left;
-				break;
-			}
-			ptr->left -= look->left;
-			adrs = &( look->next );
-		}
-		ptr->next = look;
-		*adrs = ptr;
-		return( true );
 	}
-	return( false );
+	else {
+		if(!( ptr = new pending_tod )) return( false );
+	}
+	ptr->left = duration;
+	ptr->flag = flag;
+	adrs = &_active;
+	while(( look = *adrs )) {
+		if( ptr->left < look->left ) {
+			look->left -= ptr->left;
+			break;
+		}
+		ptr->left -= look->left;
+		adrs = &( look->next );
+	}
+	ptr->next = look;
+	*adrs = ptr;
+	return( true );
 }
 
 //
@@ -126,14 +137,15 @@ bool TOD::add( word duration, Signal *flag ) {
 void TOD::process( UNUSED( byte handle )) {
 	STACK_TRACE( "void TOD::process( byte handle )" );
 
-	pending	*ptr;
+	pending_tod	*ptr;
 
 	//
 	//	Called every second to update the TOD and look
 	//	at the pending list.
 	//
-	//	Update the time of day.
+	//	Update the elapsed time and time of day.
 	//
+	_elapsed++;
 	for( byte i = 0; i < stages; i++ ) {
 		if( ++_stage[ i ] < progmem_read_byte( limit[ i ])) break;
 		_stage[ i ] = 0;
@@ -142,7 +154,7 @@ void TOD::process( UNUSED( byte handle )) {
 	//
 	//	Is there a list of pending actions awaiting our attention.
 	//
-	if( _active == NIL( pending )) {
+	if( _active == NIL( pending_tod )) {
 
 		TRACE_TOD( console.println( F( "TOD queue empty" )));
 		

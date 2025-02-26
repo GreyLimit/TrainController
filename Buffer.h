@@ -195,11 +195,11 @@ public:
 	}
 
 	bool format( char code, int a1, int a2, int a3 ) {
-		return( start( code ) && add( a1 ) && add( SPACE ) && add( a2 ) && add( a3 ) && end());
+		return( start( code ) && add( a1 ) && add( SPACE ) && add( a2 ) && add( SPACE ) && add( a3 ) && end());
 	}
 
 	bool format( char code, int a1, int a2, const char *a3 ) {
-		return( start( code ) && add( a1 ) && add( SPACE ) && add( a2 ) && add_PROGMEM( a3 ) && end());
+		return( start( code ) && add( a1 ) && add( SPACE ) && add( a2 ) && add( SPACE ) && add_PROGMEM( a3 ) && end());
 	}
 
 	virtual char *buffer( void ) {
@@ -211,7 +211,16 @@ public:
 	}
 
 	virtual void copy( char *to, byte len ) {
-		memcpy( to, _buffer, min( len, size()));
+		byte	s;
+
+		if(( s = size()) < len ) {
+			memcpy( to, _buffer, s );
+			to[ s ] = EOS;
+		}
+		else {
+			memcpy( to, _buffer, len-1 );
+			to[ len-1 ] = EOS;
+		}
 	}
 
 	virtual bool send( Byte_Queue_API *to ) {

@@ -1,42 +1,14 @@
 //
-//	Memory_Heap.h		The definition of  a generic
-//	=============		memory heap allocation (and
-//				deallocation) system designed
-//	to be a used in collaboration with C++ new() and delete().
+//	Memory_Heap.h
+//	=============
 //
-//	Specifically new should be called thus:
-//
-//		type *ptr = new ( malloc( sizeof( type ))) type;
-//
-//	where
-//
-//		type is the class/type name
-//
-//		ptr will become the same as address
-//
-//	It is also valid to use the following code:
-//
-//		type *ptr = (type *)malloc( sizeof( type ));
-//		ptr->type();
-//
-//	This is explicitly calling the constructor code.
-//
-//	When the memory is to be deleted it should NOT be
-//	done through the "delete" operator, but rather directly
-//	with the mechanism which initially provided the memory.
-//
-//	Specifically to delete an object do the following:
-//
-//		ptr->~type();
-//		free( (void *)ptr );
-//
-//
-//	The use of malloc() and free() above are place holders
-//	for any other memory management system of choice.
+//	The definition of  a generic memory heap allocation (and
+//	deallocation) system designed to be a used in place of
+//	the C++ new() and delete().
 //
 //	Note:
 //
-//	This systems is explicitly granted a fixed memory space
+//	This system is explicitly granted a fixed memory space
 //	upon initialisation and also provides a blanket "memory
 //	reset" function which sets the memory provided back to
 //	the empty state.
@@ -49,21 +21,87 @@
 //	Bring in some consistent types.
 //
 #include "Environment.h"
+#include "Parameters.h"
+#include "Configuration.h"
 #include "Library_Types.h"
+#include "Trace.h"
 
 //
-//	Declare the size of the heap if not defined elsewhere.  This
-//	definition of 128 bytes is enough to enable firmware to compile
-//	and execute, but (likely) not enough to facilitate full
-//	functionity.
+//	Make an estimation of the heap size based on the hardware and
+//	configuration data.  The source of these values input values
+//	are distributed across a number of files though primarily the
+//	hardware and parameters header files.
 //
-//	The value of HEAP_SIZE should be overredden in the Parameters
-//	or Configuration file.
-//
-#ifndef HEAP_SIZE
-#define HEAP_SIZE	127
-#endif
+#define HEAP_SIZE	(BOARD_SRAM-BOARD_REGISTERS-BOARD_STACK-STATIC_VARIABLES )
 
+//
+//	The Memory Recovery class
+//	=========================
+//
+//	This virtual class is (can be) used as a doorway into classes
+//	that allocate memory from the Memory Heap but are prepared to
+//	release any spare memory if the need arises.
+//
+//	To facilitate this the defined class needs to do two things:
+//
+//	*	include this virtual class and provide an implementation
+//		of the request routine.
+//
+//	*	register itself with the memory heap so that it can be
+//		called at a point of need.
+//
+class Memory_Recovery {
+protected:
+	//
+	//	The linkage allowing for recovery enabled classes to
+	//	be linked.
+	//
+	Memory_Recovery		*_next;
+
+public:
+	//
+	//	This is the API call that the recovery provider must
+	//	provide an implementation for.  Return true if *some*
+	//	memory has been released.
+	//
+	virtual bool release_memory( void ) = 0;
+	
+	//
+	//	These routines provide the API for the Memory Heap code
+	//	to manage the list and request a memory recovery run.
+	//
+	Memory_Recovery *linkup( Memory_Recovery *list ) {
+
+		STACK_TRACE( "Memory_Recovery *Memory_Heap::linkup( Memory_Recovery *list )" );
+
+		//
+		//	Just insert ourselves into the front of the
+		//	list and return our own address.
+		//
+		_next = list;
+		return( this );
+	}
+	bool request_recovery( void ) {
+
+		STACK_TRACE( "void Memory_Heap::request_recovery( void )" );
+
+		bool	r = false;
+
+		//
+		//	Watch this routine as it might be called with
+		//	this == NIL( Memory_Recovery ).
+		//
+		//	This routine *could* do this recursively, but
+		//	for speed and the smallest possible stack impact
+		//	the routine runs down the list directly (hence
+		//	the variable being protected rather than private).
+		//
+		for( Memory_Recovery *p = this; p != NIL( Memory_Recovery ); p = p->_next ) {
+			r |= p->release_memory();
+		}
+		return( r );
+	}
+};
 
 //
 //	The Memory Heap class.
@@ -75,11 +113,7 @@
 //	prove correct.  The solution should have a low memory over
 //	head at the expense of a high CPU overhead working on the
 //	assumption that heap activity will be low volume and
-//	predominantly allocate once basis.
-//
-//	For high volume, fast allocation and deallocations consider
-//	the Memory_Pool object.  This is specifically for temporary
-//	object management.
+//	predominantly (if not entirely) on an allocate once basis.
 //
 //	Memory Heap data memory structure:
 //
@@ -97,7 +131,7 @@
 //			code.
 //
 class Memory_Heap {
-private:
+public:
 	//
 	//	Define the base type which the heap system works with
 	//	internally.  This is expected to be an unsigned integer
@@ -119,6 +153,7 @@ private:
 #endif
 #endif
 
+private:
 	//
 	//	Declare the total size of the heap area in terms of the
 	//	storage unit being used.  This means that we have to
@@ -129,18 +164,32 @@ private:
 	
 	//
 	//	The memory area we will manage.  This is a fixed area of
-	//	memory which can be allocated from dynamically and released
-	//	when finished with.
+	//	memory which will be the source of dynamically allocated
+	//	memory.
 	//
 	storage_unit			_heap[ size ];
+	
+	//
+	//	For statistical purposes we will keep a running track on
+	//	the available space in the heap.
+	//
+	storage_unit			_free;
+
+	//
+	//	The list of memory users which have registered for the
+	//	memory recovery facility.
+	//
+	Memory_Recovery			*_recovery;
 
 	//
 	//	Define a number of constants based on the storage_unit type.
 	//
 	//	We can use the top bit safely as we are always working
 	//	in units of "storage_unit", a data item declared to be
-	//	no less than *twice* the capacity of the byte size of
-	//	the whole heap area.
+	//	no less than *twice* the size of the whole heap area.
+	//
+	//	The "top bit" flag is set when a block is deallocated
+	//	and empty when the block is allocated.
 	//
 	static const storage_unit heap_flag	= (storage_unit)1 << (( sizeof( storage_unit ) << 3 ) -1 );
 	static const storage_unit heap_data	= heap_flag -1;
@@ -200,27 +249,43 @@ public:
 	//	allocations etc.
 	//
 	void erase( void );
+	
+	//
+	//	Return the amount of free space in the heap, though not
+	//	necessarily the largest free space.
+	//
+	storage_unit free_memory( void );
+	
+	//
+	//	Return the largest memory block available.  This might be
+	//	the same as the value free_memory() returns, but is in
+	//	no garanteed to be so.
+	//
+	//	This routine will be slow, so do not include in any time
+	//	critical activity or use with any real frequency.
+	//
+	storage_unit free_block( void );
+
+	//
+	//	Classes which are prepared to respond to the memory
+	//	recovery request need to register themselves through
+	//	this API call.
+	//
+	void recover_from( Memory_Recovery *user );
 };
 
+//
+//	Declare the replacements to the "built in" new and delete operators.
+//
+extern void *operator new( size_t bytes );
+extern void operator delete( void *ptr );
 
 //
 //	Declare the memory heap itself.
 //
 extern Memory_Heap heap;
 
-//
-//	Declare a basic API to simplify the code associated with the
-//	allocation and release of dynamic memory space on the heap.
-//
-template<class T> inline T *NEW( void ) {
-	T *ptr = heap.alloc( sizeof( T ));
-	if( ptr ) ptr->T();
-	return( ptr );
-}
-template<class T> inline void FREE( T *ptr ) {
-	ptr->~T();
-	heap.free( (void *)ptr );
-}
+
 
 
 #endif

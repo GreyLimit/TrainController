@@ -35,10 +35,10 @@
 //	Define the console buffer sizes, if not predefined elsewhere.
 //
 #ifndef CONSOLE_INPUT
-#define CONSOLE_INPUT	32
+#define CONSOLE_INPUT	SELECT_SML(32,64,128)
 #endif
 #ifndef CONSOLE_OUTPUT
-#define CONSOLE_OUTPUT	250
+#define CONSOLE_OUTPUT	SELECT_SML(32,64,128)
 #endif
 
 //

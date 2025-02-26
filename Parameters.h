@@ -10,7 +10,8 @@
 //
 //	The headline configuration parameters.
 //
-#define VERSION_NUMBER		"0.3.5"
+#define VERSION_NAME		"Train Con"
+#define VERSION_NUMBER		"0.4.1"
 #define SERIAL_BAUD_RATE	B115200
 #define SERIAL_BAUD_RATE_STR	"115K"
 
@@ -38,17 +39,34 @@
 //	For Debugging Purposes
 //	======================
 //
+//	DISABLE_ASSERTIONS	If defined then (assuming that DEBUGGING_ENABLED
+//				is not defined) all of the in-line code
+//				ASSERT() verification checks will be excluded.
+//
 //	ENABLE_COUNT_INTERRUPTS	Display the number of interupts per second.
 //	ENABLE_DCC_DELAY_REPORT	Display the "delay" between the DCC interrrupt
 //				trigger and ISR being called.
 //	ENABLE_IDLE_COUNT	Display a count of the timmes the task
 //				manager was "idle" in the last period.
+//	ENABLE_HEAP_STATS	Display usage of the heap.
 //
 //	ENABLE_DCC_SYNCHRONISATION
 //				Enable code specifically included to fine
 //				tune the execution of the DCC interrupt
 //				handler (at the expense of wasting CPU
 //				cycles inside interrupt handler).
+//			Note/	Do not disable this option (by undefining
+//				this symbol) as this is the key code that
+//				ensures the DCC signal is time accurate.
+//				In time this symbol will be removed.
+//
+//#define DISABLE_ASSERTIONS
+//#define ENABLE_COUNT_INTERRUPTS
+//#define ENABLE_DCC_DELAY_REPORT
+//#define ENABLE_IDLE_COUNT
+//#define ENABLE_HEAP_STATS
+#define ENABLE_DCC_SYNCHRONISATION
+
 //
 //	ENABLE_TRACE_ADC	Trace the analogue to digital conversions.
 //	ENABLE_TRACE_CLOCK	Trace activities relating to the RTC.
@@ -73,10 +91,6 @@
 //	ENABLE_STACK_TRACE	Enable the STACK_TRACE macro analysis
 //
 
-//#define ENABLE_COUNT_INTERRUPTS
-//#define ENABLE_DCC_DELAY_REPORT
-#define ENABLE_IDLE_COUNT
-#define ENABLE_DCC_SYNCHRONISATION
 //#define ENABLE_TRACE_ADC
 //#define ENABLE_TRACE_CLOCK
 //#define ENABLE_TRACE_CONSOLE

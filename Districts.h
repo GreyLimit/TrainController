@@ -15,13 +15,7 @@
 #include "Configuration.h"
 #include "Environment.h"
 #include "District.h"
-
-//
-//	JEFF
-//
-//		Probably need to consider the creation of "zones" within the
-//		districts - specifically "Main Track" and "Programming Track"
-//
+#include "DCC_District.h"
 
 //
 //	Define the object holding all of the districts and providing
@@ -41,28 +35,13 @@ public:
 	//	standard "Arduino Motor Driver Shield" This is actually a
 	//	much lower number: 2.
 	//
-	static const byte	districts = 2;
+	static const byte districts = DCC_District::districts;
 	
 private:
 	//
 	//	Declare the set of districts which we will be managing.
 	//
 	District	_district[ districts ];
-
-	//
-	//	Declare the data structure that provides the input data
-	//	to facilitate the configuration of the individual
-	//	districts.
-	//
-	struct district_data {
-		byte	enable,
-			direction,
-			adc_pin,
-			adc_test,
-			brake,
-			zone;
-	};
-	static const district_data _district_data[ districts ] PROGMEM;
 
 	//
 	//	Which zone is powered on.
@@ -105,8 +84,6 @@ public:
 //	Declare the controlling object.
 //
 extern Districts districts;
-
-
 
 #endif
 

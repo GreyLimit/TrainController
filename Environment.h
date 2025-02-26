@@ -253,6 +253,7 @@
 #define SLASH		'/'
 #define COLON		':'
 #define DELETE		'\177'
+#define ZERO		'0'
 #define ERROR		(-1)
 
 

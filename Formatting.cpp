@@ -22,15 +22,32 @@
 //	an issue with the conversion (and remedial action needs
 //	to be done) or true if everything worked as planned.
 //
-//	The "int" version handles signed 16 bit numbers, the byte
-//	version unsigned 8 bit values.
+//	The "int" version handles signed 16 bit numbers, the word
+//	version unsigned 16 bit numbers and the byte version unsigned
+//	8 bit values.
 //
-bool backfill_int_to_text( char *buf, byte len, int v ) {
+bool backfill_int_to_text( char *buf, byte len, int v, char fill ) {
 
-	STACK_TRACE( "bool backfill_int_to_text( char *buf, byte len, int v )" );
+	STACK_TRACE( "bool backfill_int_to_text( char *buf, byte len, int v, char fill )" );
 
-	bool	n;	// Negative flag.
+	ASSERT( buf != NULL );
+	ASSERT( len > 0 );
 
+	if( v < 0 ) {
+		if( len == 1 ) return( false );
+		*buf++ = '-';
+		return( backfill_word_to_text( buf, len-1, (word)( -v ), fill ));
+	}
+	return( backfill_word_to_text( buf, len, (word)v, fill ));
+}
+
+//
+//	Again for unsigned words.
+//
+bool backfill_word_to_text( char *buf, byte len, word v, char fill ) {
+
+	STACK_TRACE( "bool backfill_word_to_text( char *buf, byte len, word v, char fill )" );
+	
 	ASSERT( buf != NULL );
 	ASSERT( len > 0 );
 
@@ -50,11 +67,6 @@ bool backfill_int_to_text( char *buf, byte len, int v ) {
 	}
 	else {
 		//
-		//	Prepare for handling negative number
-		//
-		if(( n = ( v < 0 ))) v = -v;
-		
-		//
 		//	loop round pealing off the digits
 		//
 		while( len-- ) {
@@ -62,7 +74,7 @@ bool backfill_int_to_text( char *buf, byte len, int v ) {
 			//	While() test conveniently checks the
 			//	number of bytes left is greater than
 			//	zero, before moving len down to the
-			//	index of the next charater to fill in.
+			//	index of the next character to fill in.
 			//
 			buf[ len ] = '0' + ( v % 10 );
 			if(( v /= 10 ) == 0 ) {
@@ -74,35 +86,30 @@ bool backfill_int_to_text( char *buf, byte len, int v ) {
 			}
 		}
 		//
-		//	If v is not zero, or if len is zero and
-		//	the negative flag is set, then we cannot
+		//	If v is not zero then we cannot
 		//	fit the data into the available space.
 		//
-		if( v ||( n && ( len < 1 ))) return( false );
-		
-		//
-		//	Insert negative symbol if required.
-		//
-		if( n ) buf[ --len ] = '-';
+		if( v ) return( false );
 	}
 	//
 	//	Space pad rest of buffer.  Remember here, too, that
 	//	len is (effectively) pre-decremented before being used
 	//	as the index.
 	//
-	while( len-- ) buf[ len ] = SPACE;
+	while( len-- ) buf[ len ] = fill;
 	//
 	//	Done!
 	//
 	return( true );
 }
 
+
 //
 //	Again for unsigned bytes.
 //
-bool backfill_byte_to_text( char *buf, byte len, byte v ) {
+bool backfill_byte_to_text( char *buf, byte len, byte v, char fill ) {
 
-	STACK_TRACE( "bool backfill_byte_to_text( char *buf, byte len, byte v )" );
+	STACK_TRACE( "bool backfill_byte_to_text( char *buf, byte len, byte v, char fill )" );
 
 	ASSERT( buf != NULL );
 	ASSERT( len > 0 );
@@ -119,7 +126,7 @@ bool backfill_byte_to_text( char *buf, byte len, byte v ) {
 			if(( v /= 10 ) == 0 ) break;
 		}
 	}
-	while( len ) buf[ --len ] = SPACE;
+	while( len ) buf[ --len ] = fill;
 	return( v == 0 );
 }
 

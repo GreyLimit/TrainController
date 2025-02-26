@@ -12,13 +12,6 @@
 #include "Task_Entry.h"
 #include "Signal.h"
 
-//
-//	Define the number of pin ADC readings which can be queued.
-//
-#ifndef MAXIMUM_ADC_QUEUE
-#define MAXIMUM_ADC_QUEUE	16
-#endif
-
 
 //
 //	The AVR Analogue to Digital Conversion management class.
@@ -26,15 +19,11 @@
 class ADC_Manager : public Task_Entry {
 private:
 	//
-	//	Define how many ADC conversions we are prepared to backlog
-	//
-	static const byte	pending_queue = MAXIMUM_ADC_QUEUE;
-	//
 	//	The following structure is used by the ADC manager to
 	//	queue up multiple conversion requests so that the ADC
 	//	hardware can be 100% utilised.
 	//
-	struct pending {
+	struct pending_adc {
 		//
 		//	The actual pin that is to be read.  This is the
 		//	analogue pin number (not the digital equivalent). 
@@ -53,17 +42,16 @@ private:
 		//
 		//	The address of the next record.
 		//
-		pending		*next;
+		pending_adc	*next;
 	};
 
 	//
 	//	Define the queue and free record list.
 	//
-	pending		_pending[ pending_queue ],
-			*_active,
+	pending_adc	*_active,
 			**_tail,
 			*_free;
-			
+
 	//
 	//	The signal used to hand off between the ISR and
 	//	the processing code, and the variable that holds

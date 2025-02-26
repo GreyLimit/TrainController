@@ -16,6 +16,7 @@
 #include "Parameters.h"
 #include "Configuration.h"
 #include "DCC_Constant.h"
+#include "Memory_Heap.h"
 
 //
 //	Decoder Function value cache
@@ -36,21 +37,6 @@
 class Function {
 private:
 	//
-	//	Define a number of cache records and bytes for bit storage in
-	//	each record.  We calculate FUNCTION_BIT_ARRAY based on the
-	//	MIN and MAX function numbers provided (the 7+ ensures correct
-	//	rounding in boundary cases).
-	//
-	//	We will base the function cache size on the maximum number of
-	//	DCC mobile decoders we can have active in parallel.
-	//
-#ifdef FUNCTION_CACHE_SIZE
-	static constexpr byte	cache_size	= FUNCTION_CACHE_SIZE;
-#else
-	static constexpr byte	cache_size	= SELECT_SML(4,8,16);
-#endif
-
-	//
 	//	How many byte do we need for the bit array?
 	//
 	static constexpr byte	bit_array	= (( 1 + DCC_Constant::maximum_func_number - DCC_Constant::minimum_func_number ) + 7 ) >> 3;
@@ -63,16 +49,14 @@ private:
 	struct cache {
 		word		target;
 		byte		bits[ bit_array ];
-		cache		*next,
-				**prev;
+		cache		*next;
 	};
 
 	//
 	//	This is the array of cache records and the pointer into the head
 	//	of it (the most recently accessed).
 	//
-	cache		_record[ cache_size ],
-			*_cache;
+	cache			*_cache;
 
 	//
 	//	Define the lookup and manage cache code.

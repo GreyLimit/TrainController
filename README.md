@@ -1,8 +1,12 @@
-# Arduino Train Controller V0.3.5
+# Arduino Train Controller V0.4.1
 
 ## Summary
 
 While started as a branch from the Arduino DCC Generator with the intent of creating a free standing mechanism that will allow DCC operation of small layouts this is to be extended to recover lost functionality of the original Arduino DCC Generator.
+
+## Version 0.4.1
+
+Moving closer to a more rounded and resilient version of the firmware now making heavier use of the memory heap model.
 
 ## Version 0.3.5
 

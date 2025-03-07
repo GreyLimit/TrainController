@@ -326,32 +326,74 @@ void HCI::update_dcc_status_line( byte line ) {
 			static byte	opt = 0;
 
 			//
-			//	Row 3, DCC packets (T)ransmitted sent per second
+			//	Row 3, Individual stats, cycled through.
 			//
 			//	Rotate between the set of options this line shows.
 			//
-			if(( ++opt > 1 )) opt = 0;
-			switch( opt ) {
-				case 0: {
-					buffer[ 1 ] = 'T';
-					if( !backfill_int_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-2, stats.packets_sent())) {
-						memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
+			if(( ++opt >= 12 )) opt = 0;
+			if( opt & 1 ) {
+				switch( opt >> 1 ) {
+					case 0: {
+						buffer[ 1 ] = 'T';
+						if( !backfill_word_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-2, stats.packets_sent())) {
+							memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
+						}
+						break;
 					}
-					break;
-				}
-				case 1: {
-					buffer[ 1 ] = 'M';
-					if( !backfill_int_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-2, heap.free_memory())) {
-						memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
+					case 1: {
+						buffer[ 1 ] = 'M';
+						if( !backfill_word_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-2, heap.free_memory())) {
+							memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
+						}
+						break;
 					}
-					break;
+					case 2: {
+						buffer[ 1 ] = 'B';
+						if( !backfill_word_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-2, heap.free_block())) {
+							memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
+						}
+						break;
+					}
+					case 3: {
+						buffer[ 1 ] = 'C';
+						if( !backfill_word_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-2, heap.cache_memory())) {
+							memset( buffer+2, HASH, LCD_DISPLAY_STATUS_WIDTH-2 );
+						}
+						break;
+					}
+					case 4: {
+						word	i;
+
+						i = stats.idle_cycles();
+						buffer[ 1 ] = 'I';
+						if( i <= 9999 ) {
+							(void)backfill_word_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-2, i );
+						}
+						else {
+							(void)backfill_word_to_text( buffer+2, LCD_DISPLAY_STATUS_WIDTH-3, ( i >> 10 ));
+							buffer[ LCD_DISPLAY_STATUS_WIDTH-1 ] = 'K';
+						}
+						break;
+					}
+					case 5: {
+						byte	h;
+
+						if(( h = time_of_day.read( TOD::hours ))) {
+							(void)backfill_byte_to_text( buffer+1, 2, h, ZERO );
+							buffer[ 3 ] = 'h';
+							(void)backfill_byte_to_text( buffer+4, 2, time_of_day.read( TOD::minutes ), ZERO );
+						}
+						else {
+							(void)backfill_byte_to_text( buffer+1, 2, time_of_day.read( TOD::minutes ), ZERO );
+							buffer[ 3 ] = 'm';
+							(void)backfill_byte_to_text( buffer+4, 2, time_of_day.read( TOD::seconds ), ZERO );
+						}
+						break;
+					}
 				}
+				_display.set_posn( 3, LCD_DISPLAY_STATUS_COLUMN );
+				_display.write_buf( buffer, LCD_DISPLAY_STATUS_WIDTH );
 			}
-			//
-			//	Place the data.
-			//
-			_display.set_posn( 3, LCD_DISPLAY_STATUS_COLUMN );
-			_display.write_buf( buffer, LCD_DISPLAY_STATUS_WIDTH );
 			break;
 		}
 		default: {

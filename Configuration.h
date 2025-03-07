@@ -26,7 +26,7 @@
 //	This is *absolutely* depenedent on the firmware
 //
 #if defined( __AVR_ATmega328__ )| defined( __AVR_ATmega328P__ )| defined( __AVR_ATmega328PB__ )
-#define STATIC_VARIABLES	750
+#define STATIC_VARIABLES	828
 #elif defined( __AVR_ATmega2560__ )
 #define STATIC_VARIABLES	1000
 #else

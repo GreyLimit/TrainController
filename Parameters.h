@@ -11,7 +11,7 @@
 //	The headline configuration parameters.
 //
 #define VERSION_NAME		"Train Con"
-#define VERSION_NUMBER		"0.4.1"
+#define VERSION_NUMBER		"0.4.2"
 #define SERIAL_BAUD_RATE	B115200
 #define SERIAL_BAUD_RATE_STR	"115K"
 

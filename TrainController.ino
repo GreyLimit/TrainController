@@ -101,7 +101,7 @@
 //	
 //	* A modification to *all* the objects to step away from
 //	statically allocating tables for various roles to a system where
-//	tables are allocated "on request" using a simply heap based
+//	tables are allocated "on request" using a simple heap based
 //	memory allocation system.
 //
 //	These changes should make the future porting of this code to
